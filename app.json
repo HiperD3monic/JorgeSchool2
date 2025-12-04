@@ -1,0 +1,93 @@
+{
+  "expo": {
+    "name": "UENB Ciudad Jardin",
+    "slug": "SchoolProject",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon-light.png",
+    "scheme": "schoolproject",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.uenbciudadjardin.schoolproject",
+      "icon": {
+        "dark": "./assets/images/icon-dark.png",
+        "light": "./assets/images/icon-light.png",
+        "tinted": "./assets/images/icon-dark.png"
+      },
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Usamos Face ID para permitirte iniciar sesión de forma rápida y segura en el sistema escolar."
+      }
+    },
+    "android": {
+      "package": "com.uenbciudadjardin.schoolproject",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/images/android-icon.png",
+        "monochromeImage": "./assets/images/android-icon.png"
+      },
+      "softwareKeyboardLayoutMode": "pan",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/icon-light.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/images/icon-dark.png",
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Necesitamos acceso a tus fotos",
+          "cameraPermission": "Necesitamos acceso a la cámara"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true,
+            "nightMode": "notnight"
+          }
+        }
+      ],
+      "expo-web-browser",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "aac88740-ec55-48ab-be5b-d801c57a66ae"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/aac88740-ec55-48ab-be5b-d801c57a66ae"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
+  }
+}
