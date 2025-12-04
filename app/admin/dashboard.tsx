@@ -11,6 +11,8 @@ import Colors from '../../constants/Colors';
 import { useAuth } from '../../contexts/AuthContext';
 import * as authService from '../../services-odoo/authService';
 import { getSessionTimeRemaining } from '../../services-odoo/authService';
+import type { SchoolYear } from '../../services-odoo/yearService';
+import * as yearService from '../../services-odoo/yearService';
 import { formatTimeAgo } from '../../utils/formatHelpers';
 
 
@@ -19,10 +21,12 @@ export default function AdminDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [sessionTimeRemaining, setSessionTimeRemaining] = useState<string>('');
+  const [currentYear, setCurrentYear] = useState<SchoolYear | null>(null);
+  const [loadingYear, setLoadingYear] = useState(true);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    
+
     try {
       if (__DEV__) {
         console.log('🔄 Refrescando dashboard...');
@@ -64,10 +68,20 @@ export default function AdminDashboard() {
         });
       }
 
+      // Cargar año escolar actual
+      try {
+        const year = await yearService.loadCurrentYear();
+        setCurrentYear(year);
+      } catch (yearError) {
+        if (__DEV__) {
+          console.log('⚠️ Error cargando año escolar:', yearError);
+        }
+      }
+
       const timeRemaining = getSessionTimeRemaining(validSession);
       setSessionTimeRemaining(timeRemaining);
       setIsOfflineMode(false);
-      
+
       if (__DEV__) {
         console.log('✅ Dashboard actualizado');
       }
@@ -90,15 +104,32 @@ export default function AdminDashboard() {
     if (user) {
       const timeRemaining = getSessionTimeRemaining(user);
       setSessionTimeRemaining(timeRemaining);
-      
+
       // Actualizar cada minuto
       const interval = setInterval(() => {
         const newTimeRemaining = getSessionTimeRemaining(user);
         setSessionTimeRemaining(newTimeRemaining);
       }, 60000); // 60 segundos
-      
+
       return () => clearInterval(interval);
     }
+  }, [user]);
+
+  // Cargar año escolar al inicio
+  useEffect(() => {
+    const loadYear = async () => {
+      try {
+        const year = await yearService.loadCurrentYear();
+        setCurrentYear(year);
+      } catch (error) {
+        if (__DEV__) {
+          console.log('⚠️ Error cargando año escolar inicial:', error);
+        }
+      } finally {
+        setLoadingYear(false);
+      }
+    };
+    loadYear();
   }, [user]);
 
   /**
@@ -106,11 +137,11 @@ export default function AdminDashboard() {
    */
   const getTimeRemainingColor = (timeString: string): string => {
     if (timeString.includes('Expirada')) return Colors.error;
-    
+
     // Extraer horas si existen
     const hoursMatch = timeString.match(/(\d+)h/);
     const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
-    
+
     if (hours >= 3) return Colors.success; // Verde: 3h o más
     if (hours >= 1) return Colors.warning; // Amarillo: 1-3h
     return Colors.error; // Rojo: menos de 1h
@@ -157,6 +188,12 @@ export default function AdminDashboard() {
                     </View>
                   )}
                 </View>
+                {currentYear && (
+                  <View style={styles.yearBadge}>
+                    <Ionicons name="calendar" size={12} color="#10b981" />
+                    <Text style={styles.yearBadgeText}>{currentYear.name}</Text>
+                  </View>
+                )}
               </View>
               <TouchableOpacity style={styles.avatarContainer} activeOpacity={0.7}>
                 <LinearGradient
@@ -211,7 +248,7 @@ export default function AdminDashboard() {
                     disabled={isOfflineMode}
                     onPress={() => router.push('/admin/academic-management/register-person/select-role' as any)}
                   />
-                  
+
                   <DashboardCard
                     icon="book-outline"
                     title="Sección/Materia"
@@ -220,7 +257,7 @@ export default function AdminDashboard() {
                     disabled={true}
                     onPress={() => router.push('/admin/academic-management/register-section-subject/select-option' as any)}
                   />
-                  
+
                   <DashboardCard
                     icon="people-outline"
                     title="Directorio"
@@ -229,7 +266,7 @@ export default function AdminDashboard() {
                     disabled={isOfflineMode}
                     onPress={() => router.push('/admin/academic-management/lists-persons/select-role' as any)}
                   />
-                  
+
                   <DashboardCard
                     icon="library-outline"
                     title="Académico"
@@ -258,25 +295,25 @@ export default function AdminDashboard() {
                     disabled={true}
                     onPress={() => router.push('/admin/prueba' as any)}
                   />
-                  
+
                   <DashboardCard
                     icon="stats-chart-outline"
                     title="Reportes"
                     description="Estadísticas del sistema"
                     accentColor="#06b6d4"
                     disabled={true}
-                    onPress={() => {}}
+                    onPress={() => { }}
                   />
-                  
+
                   <DashboardCard
                     icon="calendar-outline"
                     title="Año Escolar"
-                    description="Gestionar períodos"
+                    description={currentYear ? currentYear.name : 'Gestionar períodos'}
                     accentColor="#ec4899"
-                    disabled={true}
-                    onPress={() => {}}
+                    disabled={isOfflineMode}
+                    onPress={() => router.push('/admin/academic-management/school-year/school-years-list' as any)}
                   />
-                  
+
                   <DashboardCard
                     icon="cog-outline"
                     title="Configuración"
@@ -310,9 +347,9 @@ export default function AdminDashboard() {
                   <InfoRow label="Última sesión" value={formatTimeAgo(user.createdAt)} icon="time" />
                   <InfoRow label="Tiempo restante de la sesión" value={sessionTimeRemaining} icon="hourglass-outline" valueColor={getTimeRemainingColor(sessionTimeRemaining)} />
                   {__DEV__ && (
-                    <InfoRow 
-                      label="Entorno" 
-                      value="Desarrollo" 
+                    <InfoRow
+                      label="Entorno"
+                      value="Desarrollo"
                       icon="code-slash"
                       highlight
                     />
@@ -321,8 +358,8 @@ export default function AdminDashboard() {
               </View>
 
 
-              <TouchableOpacity 
-                style={styles.logoutButton} 
+              <TouchableOpacity
+                style={styles.logoutButton}
                 onPress={handleLogout}
                 activeOpacity={0.8}
               >
@@ -358,13 +395,13 @@ interface DashboardCardProps {
 }
 
 
-const DashboardCard: React.FC<DashboardCardProps> = ({ 
-  icon, 
-  title, 
-  description, 
+const DashboardCard: React.FC<DashboardCardProps> = ({
+  icon,
+  title,
+  description,
   accentColor,
-  disabled, 
-  onPress 
+  disabled,
+  onPress
 }) => {
   const handlePress = () => {
     if (disabled) {
@@ -379,8 +416,8 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
 
 
   return (
-    <TouchableOpacity 
-      style={[ styles.card, disabled && styles.cardDisabled ]} 
+    <TouchableOpacity
+      style={[styles.card, disabled && styles.cardDisabled]}
       onPress={handlePress}
       activeOpacity={disabled ? 1 : 0.7}
     >
@@ -388,17 +425,17 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
         styles.cardIconContainer,
         { backgroundColor: disabled ? '#f3f4f6' : accentColor + '15' }
       ]}>
-        <Ionicons 
-          name={icon} 
-          size={28} 
-          color={disabled ? Colors.textSecondary : accentColor} 
+        <Ionicons
+          name={icon}
+          size={28}
+          color={disabled ? Colors.textSecondary : accentColor}
         />
       </View>
       <Text style={[styles.cardTitle, disabled && styles.cardTitleDisabled]}>
         {title}
       </Text>
       <Text style={styles.cardDescription}>{description}</Text>
-      
+
       {disabled && (
         <View style={styles.disabledIndicator}>
           <Ionicons name="cloud-offline-outline" size={16} color={Colors.textSecondary} />
@@ -422,10 +459,10 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon, highlight, valueC
   return (
     <View style={styles.infoRow}>
       <View style={[styles.infoIconWrapper, highlight && styles.infoIconWrapperHighlight]}>
-        <Ionicons 
-          name={icon} 
-          size={18} 
-          color={highlight ? Colors.warning : Colors.primary} 
+        <Ionicons
+          name={icon}
+          size={18}
+          color={highlight ? Colors.warning : Colors.primary}
         />
       </View>
       <View style={styles.infoTextContainer}>
@@ -515,6 +552,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#f59e0b',
+    letterSpacing: 0.5,
+  },
+  yearBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    gap: 4,
+    marginTop: 6,
+  },
+  yearBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#10b981',
     letterSpacing: 0.5,
   },
   avatarContainer: {

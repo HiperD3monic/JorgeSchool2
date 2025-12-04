@@ -4,23 +4,79 @@ import { router, useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { showAlert } from '../../../../components/showAlert';
+import { Input } from '../../../../components/ui';
 import Colors from '../../../../constants/Colors';
 import type { EvaluationType } from '../../../../services-odoo/yearService';
 import * as yearService from '../../../../services-odoo/yearService';
+
+// Componente selector de tipo de evaluación
+interface EvalTypeSelectorProps {
+    label: string;
+    options: EvaluationType[];
+    value: number | null;
+    onChange: (id: number) => void;
+    icon: keyof typeof Ionicons.glyphMap;
+    color: string;
+}
+
+const EvalTypeSelector: React.FC<EvalTypeSelectorProps> = ({
+    label,
+    options,
+    value,
+    onChange,
+    icon,
+    color,
+}) => (
+    <View style={styles.selectorContainer}>
+        <View style={styles.selectorHeader}>
+            <View style={[styles.selectorIcon, { backgroundColor: color + '15' }]}>
+                <Ionicons name={icon} size={20} color={color} />
+            </View>
+            <Text style={styles.selectorLabel}>{label}</Text>
+        </View>
+        <View style={styles.optionsContainer}>
+            {options.map((type) => (
+                <TouchableOpacity
+                    key={type.id}
+                    style={[
+                        styles.optionButton,
+                        value === type.id && [styles.optionButtonActive, { borderColor: color }],
+                    ]}
+                    onPress={() => onChange(type.id)}
+                    activeOpacity={0.7}
+                >
+                    <Text
+                        style={[
+                            styles.optionText,
+                            value === type.id && [styles.optionTextActive, { color }],
+                        ]}
+                    >
+                        {type.name}
+                    </Text>
+                </TouchableOpacity>
+            ))}
+            {options.length === 0 && (
+                <View style={styles.emptyOptions}>
+                    <Text style={styles.emptyOptionsText}>Cargando opciones...</Text>
+                </View>
+            )}
+        </View>
+    </View>
+);
 
 export default function RegisterSchoolYearScreen() {
     const params = useLocalSearchParams<{ yearId?: string }>();
     const isEditMode = !!params.yearId;
 
-    const [loading, setLoading] = useState(false);
     const [initialLoading, setInitialLoading] = useState(isEditMode);
     const [saving, setSaving] = useState(false);
 
     // Form fields
     const [name, setName] = useState('');
+    const [nameError, setNameError] = useState('');
     const [evalTypeSecundary, setEvalTypeSecundary] = useState<number | null>(null);
     const [evalTypePrimary, setEvalTypePrimary] = useState<number | null>(null);
     const [evalTypePree, setEvalTypePree] = useState<number | null>(null);
@@ -80,25 +136,38 @@ export default function RegisterSchoolYearScreen() {
         loadYear();
     }, [params.yearId]);
 
-    const handleSave = async () => {
-        // Validation
-        if (!name.trim()) {
-            showAlert('Error', 'El nombre del año escolar es requerido');
-            return;
+    const handleNameChange = (text: string) => {
+        setName(text);
+        if (nameError) setNameError('');
+    };
+
+    const validateForm = (): boolean => {
+        let isValid = true;
+
+        if (!name.trim() || name.trim().length < 4) {
+            setNameError('El nombre debe tener al menos 4 caracteres (ej: 2024-2025)');
+            isValid = false;
         }
+
         if (!evalTypeSecundary || !evalTypePrimary || !evalTypePree) {
             showAlert('Error', 'Debes seleccionar todos los tipos de evaluación');
-            return;
+            isValid = false;
         }
+
+        return isValid;
+    };
+
+    const handleSave = async () => {
+        if (!validateForm()) return;
 
         setSaving(true);
 
         try {
             const data = {
                 name: name.trim(),
-                evalutionTypeSecundary: evalTypeSecundary,
-                evalutionTypePrimary: evalTypePrimary,
-                evalutionTypePree: evalTypePree,
+                evalutionTypeSecundary: evalTypeSecundary!,
+                evalutionTypePrimary: evalTypePrimary!,
+                evalutionTypePree: evalTypePree!,
             };
 
             let result;
@@ -166,111 +235,55 @@ export default function RegisterSchoolYearScreen() {
                         style={styles.content}
                         contentContainerStyle={styles.scrollContent}
                         showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
                     >
-                        {/* Nombre del año */}
-                        <View style={styles.formGroup}>
-                            <Text style={styles.label}>Nombre del Año Escolar *</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={name}
-                                onChangeText={setName}
-                                placeholder="Ej: 2024-2025"
-                                placeholderTextColor={Colors.textTertiary}
-                            />
-                            <Text style={styles.hint}>
-                                Este nombre identificará el período escolar
-                            </Text>
-                        </View>
+                        {/* Nombre del año usando Input */}
+                        <Input
+                            label="Nombre del Año Escolar"
+                            value={name}
+                            onChangeText={handleNameChange}
+                            placeholder="Ej: 2024-2025"
+                            leftIcon="calendar-outline"
+                            error={nameError}
+                        />
 
-                        {/* Tipo de evaluación Secundaria */}
-                        <View style={styles.formGroup}>
-                            <Text style={styles.label}>Tipo de Evaluación - Media General *</Text>
-                            <View style={styles.optionsContainer}>
-                                {evalTypesSecundary.map((type) => (
-                                    <TouchableOpacity
-                                        key={type.id}
-                                        style={[
-                                            styles.optionButton,
-                                            evalTypeSecundary === type.id && styles.optionButtonActive,
-                                        ]}
-                                        onPress={() => setEvalTypeSecundary(type.id)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text
-                                            style={[
-                                                styles.optionText,
-                                                evalTypeSecundary === type.id && styles.optionTextActive,
-                                            ]}
-                                        >
-                                            {type.name}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </View>
+                        {/* Selectores de tipo de evaluación */}
+                        <EvalTypeSelector
+                            label="Media General"
+                            options={evalTypesSecundary}
+                            value={evalTypeSecundary}
+                            onChange={setEvalTypeSecundary}
+                            icon="school"
+                            color="#10b981"
+                        />
 
-                        {/* Tipo de evaluación Primaria */}
-                        <View style={styles.formGroup}>
-                            <Text style={styles.label}>Tipo de Evaluación - Primaria *</Text>
-                            <View style={styles.optionsContainer}>
-                                {evalTypesPrimary.map((type) => (
-                                    <TouchableOpacity
-                                        key={type.id}
-                                        style={[
-                                            styles.optionButton,
-                                            evalTypePrimary === type.id && styles.optionButtonActive,
-                                        ]}
-                                        onPress={() => setEvalTypePrimary(type.id)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text
-                                            style={[
-                                                styles.optionText,
-                                                evalTypePrimary === type.id && styles.optionTextActive,
-                                            ]}
-                                        >
-                                            {type.name}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </View>
+                        <EvalTypeSelector
+                            label="Primaria"
+                            options={evalTypesPrimary}
+                            value={evalTypePrimary}
+                            onChange={setEvalTypePrimary}
+                            icon="book"
+                            color="#3b82f6"
+                        />
 
-                        {/* Tipo de evaluación Preescolar */}
-                        <View style={styles.formGroup}>
-                            <Text style={styles.label}>Tipo de Evaluación - Preescolar *</Text>
-                            <View style={styles.optionsContainer}>
-                                {evalTypesPree.map((type) => (
-                                    <TouchableOpacity
-                                        key={type.id}
-                                        style={[
-                                            styles.optionButton,
-                                            evalTypePree === type.id && styles.optionButtonActive,
-                                        ]}
-                                        onPress={() => setEvalTypePree(type.id)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text
-                                            style={[
-                                                styles.optionText,
-                                                evalTypePree === type.id && styles.optionTextActive,
-                                            ]}
-                                        >
-                                            {type.name}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </View>
+                        <EvalTypeSelector
+                            label="Preescolar"
+                            options={evalTypesPree}
+                            value={evalTypePree}
+                            onChange={setEvalTypePree}
+                            icon="color-palette"
+                            color="#ec4899"
+                        />
 
                         {/* Info card */}
-                        <View style={styles.infoCard}>
-                            <Ionicons name="information-circle" size={24} color={Colors.info} />
-                            <Text style={styles.infoText}>
-                                Al crear un nuevo año escolar, este se establecerá automáticamente como el año actual.
-                                Los años anteriores se marcarán como no actuales.
-                            </Text>
-                        </View>
+                        {!isEditMode && (
+                            <View style={styles.infoCard}>
+                                <Ionicons name="information-circle" size={22} color={Colors.primary} />
+                                <Text style={styles.infoText}>
+                                    Al crear un nuevo año escolar, este se establecerá automáticamente como el año actual.
+                                </Text>
+                            </View>
+                        )}
 
                         <View style={{ height: 100 }} />
                     </ScrollView>
@@ -331,7 +344,7 @@ const styles = StyleSheet.create({
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.15,
                 shadowRadius: 12,
-            }
+            },
         }),
     },
     backButton: {
@@ -358,39 +371,28 @@ const styles = StyleSheet.create({
     scrollContent: {
         padding: 20,
     },
-    formGroup: {
+    // Selector styles
+    selectorContainer: {
         marginBottom: 24,
     },
-    label: {
+    selectorHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 12,
+    },
+    selectorIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    selectorLabel: {
         fontSize: 15,
         fontWeight: '700',
         color: Colors.textPrimary,
-        marginBottom: 10,
         letterSpacing: -0.2,
-    },
-    input: {
-        backgroundColor: '#fff',
-        borderRadius: 14,
-        paddingHorizontal: 18,
-        paddingVertical: 16,
-        fontSize: 16,
-        color: Colors.textPrimary,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.04,
-                shadowRadius: 4,
-            },
-        }),
-    },
-    hint: {
-        fontSize: 13,
-        color: Colors.textTertiary,
-        marginTop: 8,
-        fontWeight: '500',
     },
     optionsContainer: {
         flexDirection: 'row',
@@ -408,8 +410,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     optionButtonActive: {
-        backgroundColor: `${Colors.primary}10`,
-        borderColor: Colors.primary,
+        backgroundColor: Colors.primary + '10',
     },
     optionText: {
         fontSize: 14,
@@ -417,20 +418,28 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
     },
     optionTextActive: {
-        color: Colors.primary,
+        fontWeight: '700',
+    },
+    emptyOptions: {
+        padding: 16,
+    },
+    emptyOptionsText: {
+        fontSize: 14,
+        color: Colors.textTertiary,
     },
     infoCard: {
         flexDirection: 'row',
-        backgroundColor: `${Colors.info}15`,
+        backgroundColor: Colors.primary + '10',
         borderRadius: 16,
         padding: 16,
         gap: 12,
         alignItems: 'flex-start',
+        marginTop: 8,
     },
     infoText: {
         flex: 1,
         fontSize: 14,
-        color: Colors.info,
+        color: Colors.textSecondary,
         lineHeight: 20,
         fontWeight: '500',
     },
@@ -451,10 +460,7 @@ const styles = StyleSheet.create({
                 shadowOffset: { width: 0, height: -4 },
                 shadowOpacity: 0.08,
                 shadowRadius: 8,
-            },
-            android: {
-                elevation: 8,
-            },
+            }
         }),
     },
     saveButton: {

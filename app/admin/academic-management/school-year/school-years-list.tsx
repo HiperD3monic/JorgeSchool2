@@ -6,192 +6,20 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { EmptyState } from '../../../../components/list';
+import { EmptyState, SearchBar } from '../../../../components/list';
+import {
+    EditSchoolYearModal,
+    SchoolYearCard,
+    SchoolYearCardSkeleton,
+    SchoolYearSearchBarSkeleton,
+    SchoolYearStatsCard,
+    SchoolYearStatsCardSkeleton,
+    ViewSchoolYearModal,
+} from '../../../../components/school-year';
 import { showAlert } from '../../../../components/showAlert';
 import Colors from '../../../../constants/Colors';
 import { useSchoolYears } from '../../../../hooks';
 import type { SchoolYear } from '../../../../services-odoo/yearService';
-
-// ============ COMPONENTES ============
-
-interface SchoolYearCardProps {
-    year: SchoolYear;
-    index: number;
-    onEdit: () => void;
-    isOfflineMode: boolean;
-}
-
-const SchoolYearCard: React.FC<SchoolYearCardProps> = ({ year, index, onEdit, isOfflineMode }) => {
-    const scaleAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        Animated.spring(scaleAnim, {
-            toValue: 1,
-            delay: index * 80,
-            tension: 100,
-            friction: 10,
-            useNativeDriver: true,
-        }).start();
-    }, [index, scaleAnim]);
-
-    return (
-        <Animated.View
-            style={[
-                styles.card,
-                {
-                    transform: [{ scale: scaleAnim }],
-                    opacity: scaleAnim,
-                },
-            ]}
-        >
-            <TouchableOpacity
-                style={styles.cardContent}
-                onPress={onEdit}
-                activeOpacity={0.7}
-                disabled={isOfflineMode}
-            >
-                <View style={styles.cardHeader}>
-                    <View style={styles.cardIconContainer}>
-                        <Ionicons name="calendar" size={24} color={Colors.primary} />
-                    </View>
-                    <View style={styles.cardInfo}>
-                        <Text style={styles.cardTitle}>{year.name}</Text>
-                        {year.current && (
-                            <View style={styles.currentBadge}>
-                                <Ionicons name="checkmark-circle" size={14} color="#fff" />
-                                <Text style={styles.currentBadgeText}>Año Actual</Text>
-                            </View>
-                        )}
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
-                </View>
-
-                <View style={styles.cardStats}>
-                    <View style={styles.statItem}>
-                        <Ionicons name="people" size={16} color={Colors.textSecondary} />
-                        <Text style={styles.statText}>{year.totalStudentsCount || 0} estudiantes</Text>
-                    </View>
-                    <View style={styles.statItem}>
-                        <Ionicons name="grid" size={16} color={Colors.textSecondary} />
-                        <Text style={styles.statText}>{year.totalSectionsCount || 0} secciones</Text>
-                    </View>
-                    <View style={styles.statItem}>
-                        <Ionicons name="school" size={16} color={Colors.textSecondary} />
-                        <Text style={styles.statText}>{year.totalProfessorsCount || 0} profesores</Text>
-                    </View>
-                </View>
-
-                {year.evalutionTypeSecundary && (
-                    <View style={styles.evaluationInfo}>
-                        <Text style={styles.evaluationLabel}>Tipo evaluación secundaria:</Text>
-                        <Text style={styles.evaluationValue}>{year.evalutionTypeSecundary.name}</Text>
-                    </View>
-                )}
-            </TouchableOpacity>
-        </Animated.View>
-    );
-};
-
-const SchoolYearCardSkeleton: React.FC<{ count?: number }> = ({ count = 3 }) => {
-    const shimmerAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        const shimmer = Animated.loop(
-            Animated.sequence([
-                Animated.timing(shimmerAnim, {
-                    toValue: 1,
-                    duration: 1000,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(shimmerAnim, {
-                    toValue: 0,
-                    duration: 1000,
-                    useNativeDriver: true,
-                }),
-            ])
-        );
-        shimmer.start();
-        return () => shimmer.stop();
-    }, [shimmerAnim]);
-
-    const opacity = shimmerAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0.3, 0.7],
-    });
-
-    return (
-        <>
-            {Array.from({ length: count }).map((_, i) => (
-                <Animated.View key={i} style={[styles.card, { opacity }]}>
-                    <View style={styles.cardContent}>
-                        <View style={styles.cardHeader}>
-                            <View style={[styles.cardIconContainer, styles.skeletonBg]} />
-                            <View style={styles.cardInfo}>
-                                <View style={[styles.skeletonLine, { width: 120, height: 18 }]} />
-                                <View style={[styles.skeletonLine, { width: 80, height: 14, marginTop: 6 }]} />
-                            </View>
-                        </View>
-                        <View style={styles.cardStats}>
-                            <View style={[styles.skeletonLine, { width: 100, height: 14 }]} />
-                            <View style={[styles.skeletonLine, { width: 80, height: 14 }]} />
-                            <View style={[styles.skeletonLine, { width: 90, height: 14 }]} />
-                        </View>
-                    </View>
-                </Animated.View>
-            ))}
-        </>
-    );
-};
-
-const StatsCard: React.FC<{ total: number; currentYear: string | null }> = ({ total, currentYear }) => (
-    <View style={styles.statsCard}>
-        <View style={styles.statsRow}>
-            <View style={styles.statBox}>
-                <Text style={styles.statNumber}>{total}</Text>
-                <Text style={styles.statLabel}>Total Años</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-                <Text style={styles.statNumber}>{currentYear || '-'}</Text>
-                <Text style={styles.statLabel}>Año Actual</Text>
-            </View>
-        </View>
-    </View>
-);
-
-const SearchBar: React.FC<{
-    value: string;
-    onChangeText: (text: string) => void;
-    onClear: () => void;
-}> = ({ value, onChangeText, onClear }) => (
-    <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={Colors.textTertiary} />
-        <View style={styles.searchInputContainer}>
-            <input
-                type="text"
-                value={value}
-                onChange={(e) => onChangeText(e.target.value)}
-                placeholder="Buscar año escolar..."
-                style={{
-                    flex: 1,
-                    border: 'none',
-                    outline: 'none',
-                    fontSize: 16,
-                    backgroundColor: 'transparent',
-                    color: Colors.textPrimary,
-                    width: '100%',
-                }}
-            />
-        </View>
-        {value.length > 0 && (
-            <TouchableOpacity onPress={onClear} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={20} color={Colors.textTertiary} />
-            </TouchableOpacity>
-        )}
-    </View>
-);
-
-// ============ SCREEN PRINCIPAL ============
 
 export default function SchoolYearsListScreen() {
     const {
@@ -209,7 +37,10 @@ export default function SchoolYearsListScreen() {
         onRefresh,
     } = useSchoolYears();
 
+    // Estados para modales
     const [selectedYear, setSelectedYear] = useState<SchoolYear | null>(null);
+    const [showViewModal, setShowViewModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
 
     // Estados para crossfade
     const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -234,17 +65,35 @@ export default function SchoolYearsListScreen() {
         }
     }, [initialLoading, showSkeleton, fadeAnim]);
 
-    const handleEdit = (year: SchoolYear) => {
+    const handleViewYear = (year: SchoolYear) => {
+        setSelectedYear(year);
+        setShowViewModal(true);
+    };
+
+    const handleEditYear = () => {
+        if (isOfflineMode) {
+            showAlert('Sin conexión', 'No puedes editar años escolares sin conexión a internet.');
+            return;
+        }
+        setShowViewModal(false);
+        setTimeout(() => {
+            setShowEditModal(true);
+        }, 200);
+    };
+
+    const handleEditFromCard = (year: SchoolYear) => {
         if (isOfflineMode) {
             showAlert('Sin conexión', 'No puedes editar años escolares sin conexión a internet.');
             return;
         }
         setSelectedYear(year);
-        // TODO: Abrir modal de edición o navegar a pantalla de edición
-        router.push({
-            pathname: '/admin/academic-management/school-year/register-school-year' as any,
-            params: { yearId: year.id.toString() }
-        });
+        setShowEditModal(true);
+    };
+
+    const handleSaveSuccess = () => {
+        setShowEditModal(false);
+        setSelectedYear(null);
+        onRefresh();
     };
 
     return (
@@ -295,15 +144,8 @@ export default function SchoolYearsListScreen() {
                     <View style={styles.content}>
                         {showSkeleton ? (
                             <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-                                <View style={styles.statsCard}>
-                                    <View style={styles.statsRow}>
-                                        <View style={[styles.skeletonLine, { width: 60, height: 30 }]} />
-                                        <View style={[styles.skeletonLine, { width: 100, height: 30 }]} />
-                                    </View>
-                                </View>
-                                <View style={[styles.searchContainer, { opacity: 0.5 }]}>
-                                    <View style={[styles.skeletonLine, { width: '100%', height: 20 }]} />
-                                </View>
+                                <SchoolYearStatsCardSkeleton />
+                                <SchoolYearSearchBarSkeleton />
                                 <ScrollView
                                     style={styles.listContainer}
                                     showsVerticalScrollIndicator={false}
@@ -324,7 +166,7 @@ export default function SchoolYearsListScreen() {
                                 )}
 
                                 {!searchMode && (
-                                    <StatsCard
+                                    <SchoolYearStatsCard
                                         total={totalYears}
                                         currentYear={currentYear?.name || null}
                                     />
@@ -333,6 +175,7 @@ export default function SchoolYearsListScreen() {
                                 <SearchBar
                                     value={searchQuery}
                                     onChangeText={setSearchQuery}
+                                    placeholder="Buscar año escolar..."
                                     onClear={exitSearchMode}
                                 />
 
@@ -387,7 +230,8 @@ export default function SchoolYearsListScreen() {
                                                 key={year.id}
                                                 year={year}
                                                 index={index}
-                                                onEdit={() => handleEdit(year)}
+                                                onPress={() => handleViewYear(year)}
+                                                onEdit={() => handleEditFromCard(year)}
                                                 isOfflineMode={isOfflineMode}
                                             />
                                         ))
@@ -397,13 +241,26 @@ export default function SchoolYearsListScreen() {
                             </Animated.View>
                         )}
                     </View>
+
+                    {/* Modales */}
+                    <ViewSchoolYearModal
+                        visible={showViewModal}
+                        year={selectedYear}
+                        onClose={() => setShowViewModal(false)}
+                        onEdit={handleEditYear}
+                    />
+
+                    <EditSchoolYearModal
+                        visible={showEditModal}
+                        year={selectedYear}
+                        onClose={() => setShowEditModal(false)}
+                        onSave={handleSaveSuccess}
+                    />
                 </View>
             </SafeAreaProvider>
         </>
     );
 }
-
-// ============ ESTILOS ============
 
 const styles = StyleSheet.create({
     container: {
@@ -425,7 +282,7 @@ const styles = StyleSheet.create({
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.15,
                 shadowRadius: 12,
-            }
+            },
         }),
     },
     backButton: {
@@ -469,7 +326,7 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         paddingHorizontal: 18,
         borderRadius: 16,
-        marginBottom: 20,
+        marginBottom: 16,
         gap: 10,
     },
     offlineText: {
@@ -479,176 +336,11 @@ const styles = StyleSheet.create({
         flex: 1,
         letterSpacing: 0.2,
     },
-    statsCard: {
-        backgroundColor: '#fff',
-        borderRadius: 20,
-        padding: 20,
-        marginBottom: 16,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.08,
-                shadowRadius: 8,
-            },
-            android: {
-                elevation: 3,
-            },
-        }),
-    },
-    statsRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-around',
-    },
-    statBox: {
-        alignItems: 'center',
-        flex: 1,
-    },
-    statNumber: {
-        fontSize: 28,
-        fontWeight: '800',
-        color: Colors.primary,
-        letterSpacing: -0.5,
-    },
-    statLabel: {
-        fontSize: 13,
-        color: Colors.textSecondary,
-        fontWeight: '600',
-        marginTop: 4,
-    },
-    statDivider: {
-        width: 1,
-        height: 40,
-        backgroundColor: Colors.border,
-    },
-    searchContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#fff',
-        borderRadius: 16,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        marginBottom: 16,
-        gap: 12,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.06,
-                shadowRadius: 6,
-            },
-            android: {
-                elevation: 2,
-            },
-        }),
-    },
-    searchInputContainer: {
-        flex: 1,
-    },
-    clearButton: {
-        padding: 4,
-    },
     listContainer: {
         flex: 1,
     },
     listContent: {
         paddingBottom: 20,
-    },
-    card: {
-        backgroundColor: '#fff',
-        borderRadius: 20,
-        marginBottom: 14,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.08,
-                shadowRadius: 8,
-            },
-            android: {
-                elevation: 3,
-            },
-        }),
-    },
-    cardContent: {
-        padding: 18,
-    },
-    cardHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 14,
-    },
-    cardIconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 14,
-        backgroundColor: `${Colors.primary}15`,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    cardInfo: {
-        flex: 1,
-    },
-    cardTitle: {
-        fontSize: 17,
-        fontWeight: '700',
-        color: Colors.textPrimary,
-        letterSpacing: -0.3,
-    },
-    currentBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: Colors.success,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 10,
-        gap: 4,
-        marginTop: 6,
-        alignSelf: 'flex-start',
-    },
-    currentBadgeText: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: '#fff',
-    },
-    cardStats: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 16,
-        marginTop: 14,
-        paddingTop: 14,
-        borderTopWidth: 1,
-        borderTopColor: Colors.border,
-    },
-    statItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    statText: {
-        fontSize: 13,
-        color: Colors.textSecondary,
-        fontWeight: '500',
-    },
-    evaluationInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: Colors.border,
-    },
-    evaluationLabel: {
-        fontSize: 12,
-        color: Colors.textTertiary,
-        fontWeight: '500',
-    },
-    evaluationValue: {
-        fontSize: 12,
-        color: Colors.textSecondary,
-        fontWeight: '600',
     },
     emptyContainer: {
         alignItems: 'center',
@@ -678,12 +370,5 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 22,
         fontWeight: '500',
-    },
-    skeletonBg: {
-        backgroundColor: Colors.backgroundTertiary,
-    },
-    skeletonLine: {
-        backgroundColor: Colors.backgroundTertiary,
-        borderRadius: 6,
     },
 });
