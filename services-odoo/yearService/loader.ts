@@ -35,7 +35,7 @@ export const loadSchoolYears = async (forceReload: boolean = false): Promise<Sch
             YEAR_FIELDS,
             100,
             0,
-            'name desc'
+            'id desc'
         );
 
         if (!result.success) {

@@ -1,194 +1,118 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
+import React from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
-// Skeleton para SchoolYearStatsCard
-export const SchoolYearStatsCardSkeleton: React.FC = () => {
-    const shimmerAnimation = useRef(new Animated.Value(0)).current;
+interface SchoolYearCardSkeletonProps {
+    count?: number;
+}
 
-    useEffect(() => {
-        Animated.loop(
-            Animated.timing(shimmerAnimation, {
-                toValue: 1,
-                duration: 800,
-                easing: Easing.ease,
-                useNativeDriver: true,
-            })
-        ).start();
-    }, [shimmerAnimation]);
-
-    const opacity = shimmerAnimation.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [0.3, 0.7, 0.3],
-    });
-
-    return (
-        <View style={styles.statsContainer}>
-            <Animated.View style={[styles.statsCard, { opacity }]} />
-        </View>
-    );
-};
-
-// Skeleton para SearchBar
-export const SchoolYearSearchBarSkeleton: React.FC = () => {
-    const shimmerAnimation = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        Animated.loop(
-            Animated.timing(shimmerAnimation, {
-                toValue: 1,
-                duration: 800,
-                easing: Easing.ease,
-                useNativeDriver: true,
-            })
-        ).start();
-    }, [shimmerAnimation]);
-
-    const opacity = shimmerAnimation.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [0.3, 0.7, 0.3],
-    });
-
-    return (
-        <View style={styles.searchContainer}>
-            <Animated.View style={[styles.searchBar, { opacity }]} />
-        </View>
-    );
-};
-
-// Skeleton para SchoolYearCard individual
-export const SchoolYearCardSkeleton: React.FC<{ count?: number }> = ({ count = 3 }) => {
-    const shimmerAnimation = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        Animated.loop(
-            Animated.timing(shimmerAnimation, {
-                toValue: 1,
-                duration: 800,
-                easing: Easing.ease,
-                useNativeDriver: true,
-            })
-        ).start();
-    }, [shimmerAnimation]);
-
-    const opacity = shimmerAnimation.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [0.3, 0.7, 0.3],
-    });
-
+export const SchoolYearCardSkeleton: React.FC<SchoolYearCardSkeletonProps> = ({
+    count = 3,
+}) => {
     return (
         <>
             {Array.from({ length: count }).map((_, index) => (
-                <View key={index} style={styles.cardContainer}>
+                <Animated.View
+                    key={index}
+                    entering={FadeIn.delay(index * 50).duration(200)}
+                    style={styles.container}
+                >
                     <View style={styles.card}>
-                        {/* Indicador de tipo (icono) */}
-                        <Animated.View style={[styles.typeIndicator, { opacity }]} />
+                        <View style={styles.headerRow}>
+                            {/* Icon skeleton */}
+                            <View style={styles.iconSkeleton} />
 
-                        {/* Contenido */}
-                        <View style={styles.content}>
-                            {/* Nombre */}
-                            <Animated.View style={[styles.nameSkeleton, { opacity }]} />
-                            {/* Badge */}
-                            <Animated.View style={[styles.badgeSkeleton, { opacity }]} />
-                            {/* Stats row */}
-                            <View style={styles.statsRow}>
-                                <Animated.View style={[styles.statItem, { opacity }]} />
-                                <Animated.View style={[styles.statItem, { opacity }]} />
-                                <Animated.View style={[styles.statItem, { opacity }]} />
+                            {/* Content skeleton */}
+                            <View style={styles.contentSkeleton}>
+                                <View style={styles.titleRow}>
+                                    <View style={styles.titleSkeleton} />
+                                    <View style={styles.badgeSkeleton} />
+                                </View>
+                                <View style={styles.statsRow}>
+                                    <View style={styles.statSkeleton} />
+                                    <View style={styles.statSkeleton} />
+                                    <View style={styles.statSkeleton} />
+                                </View>
                             </View>
-                        </View>
 
-                        {/* Chevron */}
-                        <Animated.View style={[styles.chevronSkeleton, { opacity }]} />
+                            {/* Chevron skeleton */}
+                            <View style={styles.chevronSkeleton} />
+                        </View>
                     </View>
-                </View>
+                </Animated.View>
             ))}
         </>
     );
 };
 
 const styles = StyleSheet.create({
-    // Stats Card
-    statsContainer: {
-        marginBottom: 16,
-    },
-    statsCard: {
-        height: 90,
-        width: '100%',
-        borderRadius: 20,
-        backgroundColor: '#e5e7eb',
-    },
-
-    // Search Bar
-    searchContainer: {
-        marginBottom: 8,
-    },
-    searchBar: {
-        height: 52,
-        borderRadius: 12,
-        backgroundColor: '#e5e7eb',
-    },
-
-    // Card
-    cardContainer: {
+    container: {
         marginBottom: 12,
     },
     card: {
-        flexDirection: 'row',
-        alignItems: 'center',
         backgroundColor: '#fff',
-        borderRadius: 16,
+        borderRadius: 18,
         padding: 16,
-        borderLeftWidth: 4,
-        borderLeftColor: '#e5e7eb',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
+                shadowOffset: { width: 0, height: 3 },
                 shadowOpacity: 0.08,
-                shadowRadius: 8,
-            }
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 4,
+            },
         }),
     },
-    typeIndicator: {
-        width: 56,
-        height: 56,
-        borderRadius: 14,
-        backgroundColor: '#e5e7eb',
+    headerRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    iconSkeleton: {
+        width: 52,
+        height: 52,
+        borderRadius: 16,
+        backgroundColor: '#f3f4f6',
         marginRight: 14,
     },
-    content: {
+    contentSkeleton: {
         flex: 1,
-        justifyContent: 'center',
     },
-    nameSkeleton: {
-        height: 18,
-        backgroundColor: '#e5e7eb',
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+        gap: 8,
+    },
+    titleSkeleton: {
+        width: 120,
+        height: 20,
         borderRadius: 6,
-        marginBottom: 6,
-        width: '60%',
+        backgroundColor: '#f3f4f6',
     },
     badgeSkeleton: {
-        height: 20,
-        backgroundColor: '#e5e7eb',
-        borderRadius: 8,
-        width: 80,
-        marginBottom: 8,
+        width: 60,
+        height: 18,
+        borderRadius: 10,
+        backgroundColor: '#f3f4f6',
     },
     statsRow: {
         flexDirection: 'row',
-        gap: 12,
+        alignItems: 'center',
+        gap: 16,
     },
-    statItem: {
-        width: 40,
-        height: 14,
+    statSkeleton: {
+        width: 50,
+        height: 16,
         borderRadius: 4,
-        backgroundColor: '#e5e7eb',
+        backgroundColor: '#f3f4f6',
     },
     chevronSkeleton: {
-        width: 20,
-        height: 20,
-        borderRadius: 4,
-        backgroundColor: '#e5e7eb',
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+        backgroundColor: '#f3f4f6',
         marginLeft: 8,
     },
 });

@@ -26,13 +26,33 @@ export const normalizeSchoolYear = (record: any): SchoolYear => {
         id: record.id,
         name: record.name || '',
         current: record.current || false,
+        state: record.state || 'draft',
+        startDateReal: record.start_date_real || null,
+        endDateReal: record.end_date_real || null,
+        isLocked: record.is_locked || false,
         evalutionTypeSecundary: normalizeEvaluationType(record.evalution_type_secundary),
         evalutionTypePrimary: normalizeEvaluationType(record.evalution_type_primary),
         evalutionTypePree: normalizeEvaluationType(record.evalution_type_pree),
+        // Campos generales
         totalStudentsCount: record.total_students_count || 0,
         approvedStudentsCount: record.approved_students_count || 0,
         totalSectionsCount: record.total_sections_count || 0,
         totalProfessorsCount: record.total_professors_count || 0,
+        // Campos por nivel - Estudiantes
+        studentsPreCount: record.students_pre_count || 0,
+        studentsPrimaryCount: record.students_primary_count || 0,
+        studentsSecundaryCount: record.students_secundary_count || 0,
+        // Campos por nivel - Aprobados
+        approvedPreCount: record.approved_pre_count || 0,
+        approvedPrimaryCount: record.approved_primary_count || 0,
+        approvedSecundaryCount: record.approved_secundary_count || 0,
+        // Campos por nivel - Secciones
+        sectionsPreCount: record.sections_pre_count || 0,
+        sectionsPrimaryCount: record.sections_primary_count || 0,
+        sectionsSecundaryCount: record.sections_secundary_count || 0,
+        // Estadísticas de evaluaciones
+        evaluationsStatsJson: record.evaluations_stats_json || null,
+        recentEvaluationsJson: record.recent_evaluations_json || null,
     };
 };
 

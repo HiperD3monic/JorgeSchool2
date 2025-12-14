@@ -1,9 +1,9 @@
 import { ODOO_CONFIG } from './config';
 import {
-    extractOdooErrorMessage,
-    isAccessDeniedError,
-    isExpectedError,
-    isSessionExpiredError,
+  extractOdooErrorMessage,
+  isAccessDeniedError,
+  isExpectedError,
+  isSessionExpiredError,
 } from './errorHandler';
 import { getStoredSessionId, handleSessionExpired } from './sessionManager';
 import { OdooResponse, OdooResult, RequestParams } from './types';
@@ -94,7 +94,7 @@ export const odooRequest = async <T = any>(
       const errorMsg = extractOdooErrorMessage(responseJson.error);
 
       if (__DEV__ && !isExpectedError(errorMsg)) {
-        console.log('❌ Error de Odoo:', errorMsg);
+        console.log('❌ o:', errorMsg);
       }
 
       return { success: false, error: responseJson.error };

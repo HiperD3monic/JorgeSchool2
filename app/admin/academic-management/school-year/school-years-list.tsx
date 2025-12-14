@@ -6,20 +6,19 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { EmptyState, SearchBar } from '../../../../components/list';
+import { EmptyState, Pagination, PaginationSkeleton, SearchBar } from '../../../../components/list';
 import {
     EditSchoolYearModal,
     SchoolYearCard,
     SchoolYearCardSkeleton,
     SchoolYearSearchBarSkeleton,
-    SchoolYearStatsCard,
-    SchoolYearStatsCardSkeleton,
     ViewSchoolYearModal,
 } from '../../../../components/school-year';
 import { showAlert } from '../../../../components/showAlert';
 import Colors from '../../../../constants/Colors';
 import { useSchoolYears } from '../../../../hooks';
 import type { SchoolYear } from '../../../../services-odoo/yearService';
+import { finishSchoolYear, startSchoolYear } from '../../../../services-odoo/yearService';
 
 export default function SchoolYearsListScreen() {
     const {
@@ -31,9 +30,12 @@ export default function SchoolYearsListScreen() {
         searchQuery,
         searchMode,
         totalYears,
+        currentPage,
+        totalPages,
         isOfflineMode,
         setSearchQuery,
         exitSearchMode,
+        goToPage,
         onRefresh,
     } = useSchoolYears();
 
@@ -41,6 +43,8 @@ export default function SchoolYearsListScreen() {
     const [selectedYear, setSelectedYear] = useState<SchoolYear | null>(null);
     const [showViewModal, setShowViewModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [isStartingYear, setIsStartingYear] = useState(false);
+    const [isFinishingYear, setIsFinishingYear] = useState(false);
 
     // Estados para crossfade
     const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -81,19 +85,52 @@ export default function SchoolYearsListScreen() {
         }, 200);
     };
 
-    const handleEditFromCard = (year: SchoolYear) => {
-        if (isOfflineMode) {
-            showAlert('Sin conexión', 'No puedes editar años escolares sin conexión a internet.');
-            return;
-        }
-        setSelectedYear(year);
-        setShowEditModal(true);
-    };
-
     const handleSaveSuccess = () => {
         setShowEditModal(false);
         setSelectedYear(null);
         onRefresh();
+    };
+
+    const handleStartYear = async () => {
+        if (!selectedYear) return;
+
+        setIsStartingYear(true);
+        try {
+            const result = await startSchoolYear(selectedYear.id);
+            if (result.success) {
+                showAlert('Éxito', 'Año escolar iniciado correctamente');
+                setShowViewModal(false);
+                setSelectedYear(null);
+                onRefresh();
+            } else {
+                showAlert('Error', result.message || 'No se pudo iniciar el año escolar');
+            }
+        } catch (error: any) {
+            showAlert('Error', error.message || 'Ocurrió un error al iniciar el año');
+        } finally {
+            setIsStartingYear(false);
+        }
+    };
+
+    const handleFinishYear = async () => {
+        if (!selectedYear) return;
+
+        setIsFinishingYear(true);
+        try {
+            const result = await finishSchoolYear(selectedYear.id);
+            if (result.success) {
+                showAlert('Éxito', 'Año escolar finalizado correctamente');
+                setShowViewModal(false);
+                setSelectedYear(null);
+                onRefresh();
+            } else {
+                showAlert('Error', result.message || 'No se pudo finalizar el año escolar');
+            }
+        } catch (error: any) {
+            showAlert('Error', error.message || 'Ocurrió un error al finalizar el año');
+        } finally {
+            setIsFinishingYear(false);
+        }
     };
 
     return (
@@ -119,6 +156,14 @@ export default function SchoolYearsListScreen() {
                         </TouchableOpacity>
                         <View style={styles.headerTitleContainer}>
                             <Text style={styles.headerTitle}>Años Escolares</Text>
+                            {!showSkeleton && currentYear && (
+                                <View style={styles.headerSubtitle}>
+                                    <Ionicons name="calendar" size={14} color="rgba(255,255,255,0.8)" />
+                                    <Text style={styles.headerSubtitleText}>
+                                        Actual: {currentYear.name}
+                                    </Text>
+                                </View>
+                            )}
                         </View>
                         <TouchableOpacity
                             style={[
@@ -144,14 +189,14 @@ export default function SchoolYearsListScreen() {
                     <View style={styles.content}>
                         {showSkeleton ? (
                             <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-                                <SchoolYearStatsCardSkeleton />
                                 <SchoolYearSearchBarSkeleton />
+                                <PaginationSkeleton />
                                 <ScrollView
                                     style={styles.listContainer}
                                     showsVerticalScrollIndicator={false}
                                     contentContainerStyle={styles.listContent}
                                 >
-                                    <SchoolYearCardSkeleton count={4} />
+                                    <SchoolYearCardSkeleton count={6} />
                                 </ScrollView>
                             </Animated.View>
                         ) : (
@@ -165,19 +210,26 @@ export default function SchoolYearsListScreen() {
                                     </View>
                                 )}
 
-                                {!searchMode && (
-                                    <SchoolYearStatsCard
-                                        total={totalYears}
-                                        currentYear={currentYear?.name || null}
-                                    />
-                                )}
-
                                 <SearchBar
                                     value={searchQuery}
                                     onChangeText={setSearchQuery}
                                     placeholder="Buscar año escolar..."
                                     onClear={exitSearchMode}
                                 />
+
+                                {!searchMode && (
+                                    <View style={styles.statsRow}>
+                                        <View style={styles.statBadge}>
+                                            <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+                                            <Text style={styles.statText}>{totalYears} años</Text>
+                                        </View>
+                                        <Pagination
+                                            currentPage={currentPage}
+                                            totalPages={totalPages}
+                                            onPageChange={goToPage}
+                                        />
+                                    </View>
+                                )}
 
                                 <ScrollView
                                     style={styles.listContainer}
@@ -231,7 +283,6 @@ export default function SchoolYearsListScreen() {
                                                 year={year}
                                                 index={index}
                                                 onPress={() => handleViewYear(year)}
-                                                onEdit={() => handleEditFromCard(year)}
                                                 isOfflineMode={isOfflineMode}
                                             />
                                         ))
@@ -248,6 +299,10 @@ export default function SchoolYearsListScreen() {
                         year={selectedYear}
                         onClose={() => setShowViewModal(false)}
                         onEdit={handleEditYear}
+                        onStartYear={handleStartYear}
+                        onFinishYear={handleFinishYear}
+                        isStartingYear={isStartingYear}
+                        isFinishingYear={isFinishingYear}
                     />
 
                     <EditSchoolYearModal
@@ -272,7 +327,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingTop: Platform.OS === 'android' ? 60 : 70,
-        paddingBottom: 24,
+        paddingBottom: 20,
         paddingHorizontal: 20,
         borderBottomLeftRadius: 28,
         borderBottomRightRadius: 28,
@@ -302,6 +357,17 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         color: '#fff',
         letterSpacing: -0.3,
+    },
+    headerSubtitle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginTop: 4,
+    },
+    headerSubtitleText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: 'rgba(255, 255, 255, 0.8)',
     },
     addButton: {
         width: 40,
@@ -335,6 +401,26 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         flex: 1,
         letterSpacing: 0.2,
+    },
+    statsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    statBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: Colors.primary + '15',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 10,
+    },
+    statText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: Colors.primary,
     },
     listContainer: {
         flex: 1,

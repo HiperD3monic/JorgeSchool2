@@ -130,7 +130,7 @@ export default function AdminDashboard() {
       }
     };
     loadYear();
-  }, [user]);
+  }, []);
 
   /**
    * Obtiene color según tiempo restante
@@ -188,12 +188,6 @@ export default function AdminDashboard() {
                     </View>
                   )}
                 </View>
-                {currentYear && (
-                  <View style={styles.yearBadge}>
-                    <Ionicons name="calendar" size={12} color="#10b981" />
-                    <Text style={styles.yearBadgeText}>{currentYear.name}</Text>
-                  </View>
-                )}
               </View>
               <TouchableOpacity style={styles.avatarContainer} activeOpacity={0.7}>
                 <LinearGradient

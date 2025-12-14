@@ -12,6 +12,10 @@ export const YEAR_FIELDS = [
     'id',
     'name',
     'current',
+    'state',
+    'start_date_real',
+    'end_date_real',
+    'is_locked',
     'evalution_type_secundary',
     'evalution_type_primary',
     'evalution_type_pree',
@@ -19,6 +23,19 @@ export const YEAR_FIELDS = [
     'approved_students_count',
     'total_sections_count',
     'total_professors_count',
+    // Campos por nivel
+    'students_pre_count',
+    'students_primary_count',
+    'students_secundary_count',
+    'approved_pre_count',
+    'approved_primary_count',
+    'approved_secundary_count',
+    'sections_pre_count',
+    'sections_primary_count',
+    'sections_secundary_count',
+    // Estadísticas de evaluaciones
+    'evaluations_stats_json',
+    'recent_evaluations_json',
 ];
 
 export const EVALUATION_TYPE_FIELDS = [

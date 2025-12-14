@@ -1,12 +1,22 @@
-/**
- * Hook para gestión de años escolares
- * Maneja estado, carga, búsqueda y operaciones CRUD
- */
-
 import { useCallback, useEffect, useState } from 'react';
 import * as authService from '../services-odoo/authService';
 import type { SchoolYear } from '../services-odoo/yearService';
 import * as yearService from '../services-odoo/yearService';
+
+const ITEMS_PER_PAGE = 8;
+
+/**
+ * Ordena los años escolares con el año actual primero
+ */
+const sortYearsWithCurrentFirst = (years: SchoolYear[]): SchoolYear[] => {
+    return [...years].sort((a, b) => {
+        // El año actual va primero
+        if (a.current && !b.current) return -1;
+        if (!a.current && b.current) return 1;
+        // Luego ordenar por nombre descendente (más reciente primero)
+        return b.name.localeCompare(a.name);
+    });
+};
 
 interface UseSchoolYearsResult {
     years: SchoolYear[];
@@ -17,9 +27,12 @@ interface UseSchoolYearsResult {
     searchQuery: string;
     searchMode: boolean;
     totalYears: number;
+    currentPage: number;
+    totalPages: number;
     isOfflineMode: boolean;
     setSearchQuery: (query: string) => void;
     exitSearchMode: () => void;
+    goToPage: (page: number) => void;
     onRefresh: () => Promise<void>;
     handleDelete: (id: number) => Promise<void>;
 }
@@ -28,6 +41,7 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
     const [years, setYears] = useState<SchoolYear[]>([]);
     const [allYears, setAllYears] = useState<SchoolYear[]>([]);
     const [currentYear, setCurrentYear] = useState<SchoolYear | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
     const [loading, setLoading] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -55,13 +69,14 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
                 }
             }
 
-            // Cargar años (con caché en offline)
+            // Cargar años (con caché en offline) y ordenar
             const yearsData = await yearService.loadSchoolYears(!isOffline);
-            setAllYears(yearsData);
-            setYears(yearsData);
+            const sortedYears = sortYearsWithCurrentFirst(yearsData);
+            setAllYears(sortedYears);
+            setYears(sortedYears);
 
             // Identificar año actual
-            const current = yearsData.find(y => y.current);
+            const current = sortedYears.find(y => y.current);
             setCurrentYear(current || null);
 
             if (__DEV__) {
@@ -85,13 +100,16 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
     }, [loadInitialYears]);
 
     /**
-     * Búsqueda de años escolares
+     * Búsqueda de años escolares (sin paginación)
      */
     useEffect(() => {
         const performSearch = () => {
             if (searchQuery.trim().length === 0) {
                 setSearchMode(false);
-                setYears(allYears);
+                // Aplicar paginación al salir de búsqueda
+                const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+                const endIndex = startIndex + ITEMS_PER_PAGE;
+                setYears(allYears.slice(startIndex, endIndex));
                 return;
             }
 
@@ -107,6 +125,7 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
                     return matchesName || matchesCurrent;
                 });
 
+                // En modo búsqueda, mostrar TODOS los resultados sin paginación
                 setYears(results);
             } catch (error) {
                 if (__DEV__) {
@@ -120,7 +139,18 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
 
         const debounceTimer = setTimeout(performSearch, 300);
         return () => clearTimeout(debounceTimer);
-    }, [searchQuery, allYears]);
+    }, [searchQuery, allYears, currentPage]);
+
+    /**
+     * Aplicar paginación cuando cambia la página o los datos (solo en modo normal)
+     */
+    useEffect(() => {
+        if (!searchMode && allYears.length > 0) {
+            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            setYears(allYears.slice(startIndex, endIndex));
+        }
+    }, [currentPage, allYears, searchMode]);
 
     /**
      * Salir del modo búsqueda
@@ -128,8 +158,18 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
     const exitSearchMode = useCallback(() => {
         setSearchQuery('');
         setSearchMode(false);
-        setYears(allYears);
-    }, [allYears]);
+        setCurrentPage(1); // Volver a página 1
+        // La paginación se aplicará automáticamente por el useEffect
+    }, []);
+
+    /**
+     * Cambiar de página
+     */
+    const goToPage = useCallback((page: number) => {
+        const totalPages = Math.ceil(allYears.length / ITEMS_PER_PAGE);
+        if (page < 1 || page > totalPages || page === currentPage || searchMode) return;
+        setCurrentPage(page);
+    }, [allYears.length, currentPage, searchMode]);
 
     /**
      * Refrescar datos
@@ -149,17 +189,18 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
                 return;
             }
 
-            // Forzar recarga desde servidor
+            // Forzar recarga desde servidor y ordenar
             const yearsData = await yearService.loadSchoolYears(true);
-            setAllYears(yearsData);
+            const sortedYears = sortYearsWithCurrentFirst(yearsData);
+            setAllYears(sortedYears);
 
             // Si está en búsqueda, mantener resultados
             if (!searchMode) {
-                setYears(yearsData);
+                setYears(sortedYears);
             }
 
             // Actualizar año actual
-            const current = yearsData.find(y => y.current);
+            const current = sortedYears.find(y => y.current);
             setCurrentYear(current || null);
 
             if (__DEV__) {
@@ -209,6 +250,8 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
         }
     }, [currentYear, onRefresh]);
 
+    const totalPages = Math.ceil(allYears.length / ITEMS_PER_PAGE);
+
     return {
         years,
         currentYear,
@@ -218,9 +261,12 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
         searchQuery,
         searchMode,
         totalYears: allYears.length,
+        currentPage,
+        totalPages,
         isOfflineMode,
         setSearchQuery,
         exitSearchMode,
+        goToPage,
         onRefresh,
         handleDelete,
     };

@@ -107,6 +107,31 @@ export const updateSchoolYear = async (
         if (yearData.evalutionTypePree !== undefined) {
             values.evalution_type_pree = yearData.evalutionTypePree;
         }
+        if (yearData.current !== undefined) {
+            values.current = yearData.current;
+
+            // Si se está marcando como actual, primero desmarcar cualquier otro año actual
+            if (yearData.current === true) {
+                // Buscar años que están marcados como actuales (excepto el que estamos editando)
+                const searchResult = await odooApi.searchRead(
+                    MODELS.YEAR,
+                    [['current', '=', true], ['id', '!=', id]],
+                    ['id'],
+                    100,
+                    0
+                );
+
+                if (searchResult.success && searchResult.data && searchResult.data.length > 0) {
+                    // Desmarcar todos los años que estaban como actuales
+                    const otherCurrentYearIds = searchResult.data.map((y: any) => y.id);
+                    await odooApi.update(MODELS.YEAR, otherCurrentYearIds, { current: false });
+
+                    if (__DEV__) {
+                        console.log(`🔄 Desmarcados ${otherCurrentYearIds.length} años como no actuales`);
+                    }
+                }
+            }
+        }
 
         const updateResult = await odooApi.update(MODELS.YEAR, [id], values);
 
@@ -190,6 +215,118 @@ export const deleteSchoolYear = async (id: number): Promise<SchoolYearServiceRes
     } catch (error: any) {
         if (__DEV__) {
             console.error('❌ Error en deleteSchoolYear:', error);
+        }
+        return {
+            success: false,
+            message: odooApi.extractOdooErrorMessage(error),
+        };
+    }
+};
+
+/**
+ * Inicia un año escolar (cambia state de 'draft' a 'active')
+ */
+export const startSchoolYear = async (id: number): Promise<SchoolYearServiceResult<SchoolYear>> => {
+    try {
+        if (__DEV__) {
+            console.time(`⏱️ startSchoolYear:${id}`);
+        }
+
+        // Llamar al método action_start_year en Odoo
+        const callResult = await odooApi.callMethod(MODELS.YEAR, 'action_start_year', [[id]]);
+
+        if (!callResult.success) {
+            if (callResult.error?.isSessionExpired) {
+                return { success: false, message: 'Tu sesión ha expirado' };
+            }
+            return {
+                success: false,
+                message: odooApi.extractOdooErrorMessage(callResult.error),
+            };
+        }
+
+        // Leer datos actualizados
+        const readResult = await odooApi.read(MODELS.YEAR, [id], YEAR_FIELDS);
+
+        if (!readResult.success || !readResult.data) {
+            return { success: false, message: 'Error al leer el año actualizado' };
+        }
+
+        const updatedYear = normalizeSchoolYear(readResult.data[0]);
+
+        // Invalidar caché
+        invalidateYearsCache();
+
+        if (__DEV__) {
+            console.timeEnd(`⏱️ startSchoolYear:${id}`);
+            console.log('✅ Año escolar iniciado');
+        }
+
+        return {
+            success: true,
+            data: updatedYear,
+            schoolYear: updatedYear,
+            message: 'Año escolar iniciado exitosamente',
+        };
+    } catch (error: any) {
+        if (__DEV__) {
+            console.error('❌ Error en startSchoolYear:', error);
+        }
+        return {
+            success: false,
+            message: odooApi.extractOdooErrorMessage(error),
+        };
+    }
+};
+
+/**
+ * Finaliza un año escolar (cambia state de 'active' a 'finished')
+ */
+export const finishSchoolYear = async (id: number): Promise<SchoolYearServiceResult<SchoolYear>> => {
+    try {
+        if (__DEV__) {
+            console.time(`⏱️ finishSchoolYear:${id}`);
+        }
+
+        // Llamar al método action_finish_year en Odoo
+        const callResult = await odooApi.callMethod(MODELS.YEAR, 'action_finish_year', [[id]]);
+
+        if (!callResult.success) {
+            if (callResult.error?.isSessionExpired) {
+                return { success: false, message: 'Tu sesión ha expirado' };
+            }
+            return {
+                success: false,
+                message: odooApi.extractOdooErrorMessage(callResult.error),
+            };
+        }
+
+        // Leer datos actualizados
+        const readResult = await odooApi.read(MODELS.YEAR, [id], YEAR_FIELDS);
+
+        if (!readResult.success || !readResult.data) {
+            return { success: false, message: 'Error al leer el año actualizado' };
+        }
+
+        const updatedYear = normalizeSchoolYear(readResult.data[0]);
+
+        // Invalidar caché
+        invalidateYearsCache();
+
+        if (__DEV__) {
+            console.timeEnd(`⏱️ finishSchoolYear:${id}`);
+            console.log('✅ Año escolar finalizado');
+        }
+
+        return {
+            success: true,
+            data: updatedYear,
+            schoolYear: updatedYear,
+            message: 'Año escolar finalizado exitosamente',
+        };
+    } catch (error: any) {
+        if (__DEV__) {
+            console.error('❌ Error en finishSchoolYear:', error);
         }
         return {
             success: false,
