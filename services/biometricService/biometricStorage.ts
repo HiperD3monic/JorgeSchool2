@@ -4,6 +4,7 @@
 
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import * as biometricOdooService from '../../services-odoo/biometricService';
 import { BiometricCredentials } from './types';
 
 // Claves de almacenamiento
@@ -15,17 +16,19 @@ const BIOMETRIC_ENABLED_KEY = 'biometric_enabled';
  * @param username - Nombre de usuario
  * @param password - Contraseña (se guarda encriptada automáticamente por SecureStore)
  * @returns true si se guardó exitosamente
- */
+  */
 export const saveBiometricCredentials = async (
   username: string,
   password: string, // 🆕 Ahora también guardamos la contraseña
-  fullName: string
+  fullName: string,
+  imageUrl?: string // Foto del usuario
 ): Promise<boolean> => {
   try {
     const credentials: BiometricCredentials = {
       username,
       password, // 🆕 SecureStore la encripta automáticamente
       fullName,
+      imageUrl,
       isEnabled: true,
       enrolledAt: new Date().toISOString(),
       deviceInfo: 'mobile',
@@ -165,6 +168,22 @@ export const getBiometricFullName = async (): Promise<string | null> => {
 };
 
 /**
+ * Obtiene la imagen del usuario guardada para biometría
+ * @returns URL de imagen (base64) o null
+ */
+export const getBiometricUserImage = async (): Promise<string | null> => {
+  try {
+    const credentials = await getBiometricCredentials();
+    return credentials?.imageUrl || null;
+  } catch (error) {
+    if (__DEV__) {
+      console.error('❌ Error obteniendo imagen biométrica:', error);
+    }
+    return null;
+  }
+};
+
+/**
  * Elimina todas las credenciales biométricas
  */
 export const clearBiometricCredentials = async (): Promise<void> => {
@@ -217,21 +236,32 @@ export const disableBiometric = async (): Promise<void> => {
 export const saveBiometricCredentialsWithDeviceInfo = async (
   username: string,
   password: string,
-  fullName: string
+  fullName: string,
+  imageUrl?: string // Foto del usuario
 ): Promise<boolean> => {
   try {
-    // Importar dinámicamente para evitar dependencias circulares
+    // 1. Obtener información del dispositivo
     const { getDeviceInfo } = await import('./deviceInfo');
     const deviceInfo = await getDeviceInfo();
 
+    // 2. Obtener tipo de biometría
+    const { checkBiometricAvailability, getBiometricTypeName } = await import('./biometricAuth');
+    const availability = await checkBiometricAvailability();
+    const biometricTypeName = getBiometricTypeName(
+      availability.biometricType,
+      availability.allTypes
+    );
+
+    // 3. Guardar localmente PRIMERO (funcionalidad offline)
     const credentials: BiometricCredentials = {
       username,
       password,
       fullName,
+      imageUrl,
       isEnabled: true,
       enrolledAt: new Date().toISOString(),
-      lastUsedAt: undefined, // Se actualizará en el primer uso
-      deviceInfo: JSON.stringify(deviceInfo), // 🆕 Guardamos info del dispositivo
+      lastUsedAt: undefined,
+      deviceInfo: JSON.stringify(deviceInfo),
     };
 
     await SecureStore.setItemAsync(
@@ -245,19 +275,48 @@ export const saveBiometricCredentialsWithDeviceInfo = async (
     await SecureStore.setItemAsync(BIOMETRIC_ENABLED_KEY, 'true');
 
     if (__DEV__) {
-      console.log('✅ Credenciales biométricas guardadas con info del dispositivo:', {
-        username,
-        device: deviceInfo.deviceName,
-        platform: deviceInfo.platform,
-      });
+      console.log('✅ Credenciales guardadas localmente');
+    }
+
+    // 4. 🆕 Registrar dispositivo en backend de Odoo
+    try {
+      const payload: biometricOdooService.RegisterDevicePayload = {
+        device_id: deviceInfo.deviceId,
+        device_name: deviceInfo.deviceName,
+        platform: deviceInfo.platform as 'ios' | 'android' | 'web',
+        os_version: deviceInfo.osVersion,
+        model_name: deviceInfo.modelName,
+        brand: deviceInfo.brand,
+        biometric_type: biometricOdooService.mapBiometricTypeToBackend(biometricTypeName) as any,
+        biometric_type_display: biometricTypeName,
+        is_physical_device: deviceInfo.isPhysicalDevice,
+        device_info_json: JSON.stringify(deviceInfo),
+      };
+
+      const result = await biometricOdooService.registerDevice(payload);
+
+      if (result.success) {
+        if (__DEV__) {
+          console.log('✅ Dispositivo registrado en Odoo:', result.data?.deviceName);
+        }
+      } else {
+        if (__DEV__) {
+          console.warn('⚠️ No se pudo registrar en Odoo (funcionalidad local OK):', result.error);
+        }
+        // No fallar si el backend falla - la funcionalidad local sigue funcionando
+      }
+    } catch (backendError) {
+      if (__DEV__) {
+        console.warn('⚠️ Error de Odoo (ignorado para funcionalidad local):', backendError);
+      }
+      // Continuar - el almacenamiento local es suficiente para que funcione
     }
 
     return true;
   } catch (error) {
     if (__DEV__) {
-      console.error('❌ Error guardando credenciales con device info:', error);
+      console.error('❌ Error guardando credenciales:', error);
     }
-    // Fallback al método anterior
-    return await saveBiometricCredentials(username, password, fullName);
+    return false;
   }
 };

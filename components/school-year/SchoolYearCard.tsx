@@ -262,9 +262,6 @@ const styles = StyleSheet.create({
         backgroundColor: '#e5e7eb',
         marginHorizontal: 4,
     },
-    statSpacer: {
-        flex: 1,
-    },
     actions: {
         flexDirection: 'row',
         alignItems: 'center',

@@ -90,4 +90,3 @@ export interface SchoolYearStats {
     total: number;
     current: number | null;
 }
-

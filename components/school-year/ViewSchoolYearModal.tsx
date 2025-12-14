@@ -288,7 +288,7 @@ export const ViewSchoolYearModal: React.FC<ViewSchoolYearModalProps> = ({
                                 onPress={() => {
                                     Alert.alert(
                                         'Finalizar Año Escolar',
-                                        '¿Está seguro de finalizar este año escolar? Esta acción bloqueará todas las inscripciones, evaluaciones y demás registros. No se podrán crear ni eliminar registros relacionados.',
+                                        '¿Está seguro de finalizar este año escolar? Esta acción bloqueará todas las inscripciones, evaluaciones y demás registros.',
                                         [
                                             { text: 'Cancelar', style: 'cancel' },
                                             { text: 'Finalizar', style: 'destructive', onPress: onFinishYear }
@@ -375,116 +375,6 @@ export const ViewSchoolYearModal: React.FC<ViewSchoolYearModalProps> = ({
                         sections={year.sectionsPreCount || 0}
                         evaluationType={year.evalutionTypePree?.name || ''}
                     />
-
-                    {/* Estadísticas de Evaluaciones */}
-                    {year.evaluationsStatsJson && (
-                        <>
-                            <Text style={styles.sectionTitle}>Estadísticas de Evaluaciones</Text>
-                            <View style={styles.evalStatsCard}>
-                                <View style={styles.evalStatsRow}>
-                                    <View style={styles.evalStatItem}>
-                                        <View style={[styles.evalStatIcon, { backgroundColor: '#3b82f615' }]}>
-                                            <Ionicons name="document-text" size={20} color="#3b82f6" />
-                                        </View>
-                                        <Text style={styles.evalStatValue}>{year.evaluationsStatsJson.total}</Text>
-                                        <Text style={styles.evalStatLabel}>Total</Text>
-                                    </View>
-                                    <View style={styles.evalStatItem}>
-                                        <View style={[styles.evalStatIcon, { backgroundColor: '#10b98115' }]}>
-                                            <Ionicons name="checkmark-done" size={20} color="#10b981" />
-                                        </View>
-                                        <Text style={styles.evalStatValue}>{year.evaluationsStatsJson.qualified}</Text>
-                                        <Text style={styles.evalStatLabel}>Completas</Text>
-                                    </View>
-                                    <View style={styles.evalStatItem}>
-                                        <View style={[styles.evalStatIcon, { backgroundColor: '#f59e0b15' }]}>
-                                            <Ionicons name="time" size={20} color="#f59e0b" />
-                                        </View>
-                                        <Text style={styles.evalStatValue}>{year.evaluationsStatsJson.partial}</Text>
-                                        <Text style={styles.evalStatLabel}>Parciales</Text>
-                                    </View>
-                                    <View style={styles.evalStatItem}>
-                                        <View style={[styles.evalStatIcon, { backgroundColor: '#6b728015' }]}>
-                                            <Ionicons name="create" size={20} color="#6b7280" />
-                                        </View>
-                                        <Text style={styles.evalStatValue}>{year.evaluationsStatsJson.draft}</Text>
-                                        <Text style={styles.evalStatLabel}>Borrador</Text>
-                                    </View>
-                                </View>
-
-                                {/* Por Nivel */}
-                                <View style={styles.evalByLevelRow}>
-                                    <View style={styles.evalByLevelItem}>
-                                        <Ionicons name="school" size={16} color="#10b981" />
-                                        <Text style={styles.evalByLevelValue}>{year.evaluationsStatsJson.by_type.secundary}</Text>
-                                        <Text style={styles.evalByLevelLabel}>Media General</Text>
-                                    </View>
-                                    <View style={styles.evalByLevelItem}>
-                                        <Ionicons name="book" size={16} color="#3b82f6" />
-                                        <Text style={styles.evalByLevelValue}>{year.evaluationsStatsJson.by_type.primary}</Text>
-                                        <Text style={styles.evalByLevelLabel}>Primaria</Text>
-                                    </View>
-                                    <View style={styles.evalByLevelItem}>
-                                        <Ionicons name="color-palette" size={16} color="#ec4899" />
-                                        <Text style={styles.evalByLevelValue}>{year.evaluationsStatsJson.by_type.pre}</Text>
-                                        <Text style={styles.evalByLevelLabel}>Preescolar</Text>
-                                    </View>
-                                </View>
-                            </View>
-                        </>
-                    )}
-
-                    {/* Evaluaciones Recientes */}
-                    {year.recentEvaluationsJson?.evaluations && year.recentEvaluationsJson.evaluations.length > 0 && (
-                        <>
-                            <Text style={styles.sectionTitle}>Evaluaciones Recientes</Text>
-                            <View style={styles.recentEvalsCard}>
-                                {year.recentEvaluationsJson.evaluations.slice(0, 5).map((evaluation, index) => (
-                                    <View key={evaluation.id} style={[
-                                        styles.recentEvalItem,
-                                        index < 4 && styles.recentEvalItemBorder
-                                    ]}>
-                                        <View style={styles.recentEvalHeader}>
-                                            <Text style={styles.recentEvalName} numberOfLines={1}>
-                                                {evaluation.name}
-                                            </Text>
-                                            <View style={[
-                                                styles.recentEvalState,
-                                                {
-                                                    backgroundColor: evaluation.state === 'all' ? '#10b98115' :
-                                                        evaluation.state === 'partial' ? '#f59e0b15' : '#6b728015'
-                                                }
-                                            ]}>
-                                                <Text style={[
-                                                    styles.recentEvalStateText,
-                                                    {
-                                                        color: evaluation.state === 'all' ? '#10b981' :
-                                                            evaluation.state === 'partial' ? '#f59e0b' : '#6b7280'
-                                                    }
-                                                ]}>
-                                                    {evaluation.state === 'all' ? 'Completa' :
-                                                        evaluation.state === 'partial' ? 'Parcial' : 'Borrador'}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                        <View style={styles.recentEvalDetails}>
-                                            <Text style={styles.recentEvalDetail}>
-                                                <Ionicons name="person" size={12} color="#6b7280" /> {evaluation.professor}
-                                            </Text>
-                                            <Text style={styles.recentEvalDetail}>
-                                                <Ionicons name="grid" size={12} color="#6b7280" /> {evaluation.section}
-                                            </Text>
-                                            {evaluation.date && (
-                                                <Text style={styles.recentEvalDetail}>
-                                                    <Ionicons name="calendar" size={12} color="#6b7280" /> {evaluation.date}
-                                                </Text>
-                                            )}
-                                        </View>
-                                    </View>
-                                ))}
-                            </View>
-                        </>
-                    )}
 
                     {/* Configuración */}
                     <Text style={styles.sectionTitle}>Configuración de Evaluaciones</Text>
@@ -799,8 +689,7 @@ const styles = StyleSheet.create({
     levelHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 14,
-        marginBottom: 16,
+        marginBottom: 14,
     },
     levelIconBg: {
         width: 48,
@@ -808,71 +697,70 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
+        marginRight: 14,
     },
     levelHeaderText: {
         flex: 1,
     },
     levelTitle: {
-        fontSize: 17,
-        fontWeight: '800',
+        fontSize: 16,
+        fontWeight: '700',
         color: Colors.textPrimary,
-        letterSpacing: -0.2,
     },
     levelSubtitle: {
         fontSize: 13,
-        fontWeight: '600',
         color: Colors.textSecondary,
         marginTop: 2,
     },
     levelStatsRow: {
         flexDirection: 'row',
-        justifyContent: 'space-around',
+        alignItems: 'center',
         backgroundColor: '#f8fafc',
         borderRadius: 12,
-        paddingVertical: 14,
-        marginBottom: 14,
+        padding: 12,
     },
     levelStat: {
-        alignItems: 'center',
         flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
     },
     levelStatValue: {
-        fontSize: 18,
-        fontWeight: '800',
+        fontSize: 15,
+        fontWeight: '700',
         color: Colors.textPrimary,
-        marginTop: 4,
     },
     levelStatLabel: {
-        fontSize: 11,
-        fontWeight: '600',
+        fontSize: 12,
         color: Colors.textTertiary,
-        marginTop: 2,
     },
     levelStatDivider: {
         width: 1,
-        backgroundColor: Colors.border,
+        height: 24,
+        backgroundColor: '#e5e7eb',
     },
-    // Progress
     progressSection: {
-        marginTop: 4,
+        marginTop: 14,
     },
     progressHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: 8,
     },
     progressLabel: {
-        fontSize: 13,
-        fontWeight: '600',
+        fontSize: 12,
         color: Colors.textSecondary,
+        fontWeight: '600',
     },
     progressPercent: {
         fontSize: 14,
-        fontWeight: '800',
+        fontWeight: '700',
     },
     progressTrack: {
         height: 8,
-        backgroundColor: '#e5e7eb',
+        backgroundColor: '#f1f5f9',
         borderRadius: 4,
         overflow: 'hidden',
     },
@@ -884,7 +772,7 @@ const styles = StyleSheet.create({
     configCard: {
         backgroundColor: '#fff',
         borderRadius: 16,
-        padding: 4,
+        padding: 18,
         marginBottom: 20,
         ...Platform.select({
             ios: {
@@ -896,157 +784,37 @@ const styles = StyleSheet.create({
         }),
     },
     configRow: {
-        padding: 14,
+        paddingVertical: 4,
     },
     configItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 14,
     },
     configIconBg: {
         width: 40,
         height: 40,
-        borderRadius: 10,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
+        marginRight: 14,
     },
     configText: {
         flex: 1,
     },
     configLabel: {
         fontSize: 14,
-        fontWeight: '700',
-        color: Colors.textPrimary,
+        fontWeight: '600',
+        color: Colors.textSecondary,
     },
     configValue: {
-        fontSize: 13,
-        fontWeight: '500',
-        color: Colors.textSecondary,
+        fontSize: 15,
+        fontWeight: '700',
+        color: Colors.textPrimary,
         marginTop: 2,
     },
     configDivider: {
         height: 1,
         backgroundColor: '#f1f5f9',
-        marginHorizontal: 14,
-    },
-    // Evaluation Stats Styles
-    evalStatsCard: {
-        backgroundColor: '#fff',
-        borderRadius: 16,
-        padding: 18,
-        marginBottom: 14,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.06,
-                shadowRadius: 6,
-            },
-        }),
-    },
-    evalStatsRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 16,
-    },
-    evalStatItem: {
-        alignItems: 'center',
-        flex: 1,
-    },
-    evalStatIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-    evalStatValue: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: Colors.textPrimary,
-    },
-    evalStatLabel: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: Colors.textTertiary,
-        marginTop: 2,
-    },
-    evalByLevelRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        backgroundColor: '#f8fafc',
-        borderRadius: 12,
-        paddingVertical: 12,
-    },
-    evalByLevelItem: {
-        alignItems: 'center',
-        flex: 1,
-    },
-    evalByLevelValue: {
-        fontSize: 16,
-        fontWeight: '800',
-        color: Colors.textPrimary,
-        marginTop: 4,
-    },
-    evalByLevelLabel: {
-        fontSize: 10,
-        fontWeight: '600',
-        color: Colors.textTertiary,
-        marginTop: 2,
-    },
-    // Recent Evaluations Styles
-    recentEvalsCard: {
-        backgroundColor: '#fff',
-        borderRadius: 16,
-        padding: 4,
-        marginBottom: 14,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.06,
-                shadowRadius: 6,
-            },
-        }),
-    },
-    recentEvalItem: {
-        padding: 14,
-    },
-    recentEvalItemBorder: {
-        borderBottomWidth: 1,
-        borderBottomColor: '#f1f5f9',
-    },
-    recentEvalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-    recentEvalName: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: Colors.textPrimary,
-        flex: 1,
-        marginRight: 8,
-    },
-    recentEvalState: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 8,
-    },
-    recentEvalStateText: {
-        fontSize: 11,
-        fontWeight: '700',
-    },
-    recentEvalDetails: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 12,
-    },
-    recentEvalDetail: {
-        fontSize: 12,
-        color: Colors.textSecondary,
-        fontWeight: '500',
+        marginVertical: 12,
     },
 });

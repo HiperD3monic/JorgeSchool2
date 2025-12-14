@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { UserAvatar } from '../components/common/UserAvatar';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import Colors from '../constants/Colors';
@@ -39,6 +40,9 @@ export default function LoginScreen() {
   const [biometricType, setBiometricType] = useState<string>('Biometría');
   const [biometricUsername, setBiometricUsername] = useState<string | null>(null);
   const [biometricFullName, setBiometricFullName] = useState<string | null>(null);
+  const [biometricUserImage, setBiometricUserImage] = useState<string | null>(null); // Imagen del usuario
+  const [showBiometricMode, setShowBiometricMode] = useState(false); // Modo biométrico personalizado
+  const [manualModeOverride, setManualModeOverride] = useState(false);
 
   const { login, loginWithBiometrics } = useAuth();
 
@@ -58,7 +62,7 @@ export default function LoginScreen() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [manualModeOverride]);
 
   // Función para verificar soporte biométrico
   const checkBiometricSupport = async () => {
@@ -67,11 +71,21 @@ export default function LoginScreen() {
       const enabled = await biometricService.isBiometricEnabled();
       const savedUsername = await biometricService.getBiometricUsername();
       const savedFullName = await biometricService.getBiometricFullName();
+      const savedImage = await biometricService.getBiometricUserImage(); // Obtener imagen
 
       setBiometricAvailable(availability.isAvailable);
       setBiometricEnabled(enabled);
       setBiometricUsername(savedUsername);
       setBiometricFullName(savedFullName);
+      setBiometricUserImage(savedImage); // Guardar imagen
+
+      // Activar modo biométrico si hay credenciales Y usuario no cambió manualmente
+      if (enabled && savedUsername && !manualModeOverride) {
+        setShowBiometricMode(true);
+        setUsername(savedUsername);
+      } else if (!enabled || !savedUsername) {
+        setShowBiometricMode(false);
+      }
 
       if (availability.biometricType) {
         const typeName = biometricService.getBiometricTypeName(availability.biometricType, availability.allTypes);
@@ -84,6 +98,7 @@ export default function LoginScreen() {
           enabled,
           type: availability.biometricType,
           username: savedUsername,
+          hasImage: !!savedImage,
         });
       }
 
@@ -129,9 +144,10 @@ export default function LoginScreen() {
 
   // Ofrecer configurar biometría después del login
   const offerBiometricSetup = async (
-    loggedUsername: string, 
-    loggedPassword: string, 
-    loggedFullName: string 
+    loggedUsername: string,
+    loggedPassword: string,
+    loggedFullName: string,
+    loggedImageUrl?: string // Foto del usuario
   ) => {
     try {
       // Verificar si ya está habilitada
@@ -190,7 +206,8 @@ export default function LoginScreen() {
                 const saved = await biometricService.saveBiometricCredentialsWithDeviceInfo(
                   loggedUsername,
                   loggedPassword,
-                  loggedFullName 
+                  loggedFullName,
+                  loggedImageUrl // Imagen del usuario
                 );
 
                 if (saved) {
@@ -264,11 +281,26 @@ export default function LoginScreen() {
           });
         }
 
+        const isBiometricEnabled = await biometricService.isBiometricEnabled();
+        if (isBiometricEnabled) {
+          await biometricService.saveBiometricCredentialsWithDeviceInfo(
+            username,
+            password,
+            result.user.fullName,
+            result.user.imageUrl // Actualizar imagen
+          );
+          if (__DEV__) {
+            console.log('🔄 Credenciales biométricas actualizadas');
+            console.log('🔍 Imagen guardada:', result.user.imageUrl?.substring(0, 40));
+          }
+        }
+
         setTimeout(async () => {
           await offerBiometricSetup(
             username,
             password,
-            result.user!.fullName 
+            result.user!.fullName,
+            result.user!.imageUrl // Pasar imagen del usuario
           );
         }, 800);
 
@@ -332,18 +364,36 @@ export default function LoginScreen() {
     setLoginError('');
   };
 
+  // Función para cambiar de usuario (salir del modo biométrico)
+  const handleSwitchUser = (): void => {
+    setManualModeOverride(true); // Marcar cambio manual
+    setShowBiometricMode(false);
+    setUsername('');
+    setPassword('');
+    setLoginError('');
+    setErrors({ username: '', password: '' });
+  };
+
+  // Función para volver al usuario biométrico desde login normal
+  const handleBackToBiometric = (): void => {
+    if (biometricEnabled && biometricUsername) {
+      setManualModeOverride(false); // Permitir auto-activación
+      setShowBiometricMode(true);
+      setUsername(biometricUsername);
+      setPassword('');
+      setLoginError('');
+      setErrors({ username: '', password: '' });
+    }
+  };
+
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" translucent />
+      <StatusBar style="light" translucent />
       <>
         <Head>
           <title>Iniciar Sesión - Sistema Escolar</title>
         </Head>
-        <View style={{...styles.container, paddingTop: insets.top, paddingBottom: insets.bottom }}>
-          {/* Elementos decorativos modernos */}
-          <View style={styles.decorativeCircle1} />
-          <View style={styles.decorativeCircle2} />
-          <View style={styles.decorativeSquare} />
+        <View style={{ ...styles.container, paddingBottom: insets.bottom }}>
 
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -365,30 +415,36 @@ export default function LoginScreen() {
                   },
                 ]}
               >
-                {/* Header con logo */}
-                <View style={styles.header}>
-                  <Animated.View
-                    style={[
-                      styles.logoContainer,
-                      {
-                        transform: [{ scale: logoScale }],
-                      },
-                    ]}
-                  >
-                    <LinearGradient
-                      colors={[Colors.primary, Colors.primaryDark]}
-                      style={styles.logoGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
+                <LinearGradient
+                  colors={[Colors.primary, Colors.primaryDark]}
+                  style={styles.headerBackground}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  {/* Header con logo */}
+                  <View style={styles.header}>
+                    <Animated.View
+                      style={[
+                        styles.logoContainer,
+                        {
+                          transform: [{ scale: logoScale }],
+                        },
+                      ]}
                     >
-                      <MaterialCommunityIcons name="school" size={48} color="#ffffff" />
-                    </LinearGradient>
-                  </Animated.View>
+                      <LinearGradient
+                        colors={['#fff', '#fff']}
+                        style={styles.logoGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      >
+                        <MaterialCommunityIcons name="school" size={56} color={Colors.primary} />
+                      </LinearGradient>
+                    </Animated.View>
 
-                  <Text style={styles.title}>Bienvenido</Text>
-                  <Text style={styles.subtitle}>Sistema de Gestión Escolar</Text>
-                  <Text style={styles.schoolName}>U.E.N.B. Ciudad Jardín</Text>
-                </View>
+                    <Text style={styles.schoolName}>U.E.N.B. Ciudad Jardín</Text>
+                    <Text style={styles.subtitle}>Sistema de Gestión Escolar</Text>
+                  </View>
+                </LinearGradient>
 
                 {/* Form Card con glassmorphism */}
                 <View style={styles.formCard}>
@@ -401,124 +457,184 @@ export default function LoginScreen() {
                     </View>
                   ) : null}
 
-                  {/* 🆕 Mostrar botón biométrico si está disponible y habilitado */}
-                  {biometricAvailable && biometricEnabled && biometricUsername && (
-                    <Animated.View style={{ transform: [{ scale: biometricButtonScale }]}}>
-                      <TouchableOpacity
-                        style={styles.biometricButton}
-                        onPress={handleBiometricLogin}
-                        disabled={isLoading}
-                        activeOpacity={0.7}
-                      >
-                        <LinearGradient
-                          colors={[Colors.primary, Colors.primary, Colors.primary, Colors.primaryDark]}
-                          style={styles.biometricGradient}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                        >
-                          <Ionicons
-                            name={getBiometricIcon(biometricType)}
-                            size={32}
-                            color="#ffffff"
+                  {/* Modo biométrico personalizado con perfil */}
+                  {showBiometricMode ? (
+                    <>
+                      {/* Sección de perfil del usuario */}
+                      <View style={styles.profileSection}>
+                        <View style={styles.profileAvatarContainer}>
+                          <UserAvatar
+                            imageUrl={biometricUserImage ?? undefined}
+                            size={100}
+                            iconColor={Colors.primary}
+                            gradientColors={['#ffffff', '#ffffff']}
+                            borderRadius={12}
                           />
-                          <View style={styles.biometricTextContainer}>
-                            <Text style={styles.biometricButtonText}>
-                              Continuar con {biometricType}
-                            </Text>
-                            <Text style={styles.biometricUsernameText}>como {biometricFullName}</Text>
-                          </View>
-                        </LinearGradient>
-                      </TouchableOpacity>
+                        </View>
+                        <Text style={styles.profileName}>{biometricFullName || biometricUsername}</Text>
+                        <Text style={styles.profileSubtext}>Sesión guardada</Text>
+                      </View>
 
-                      {/* 🆕 BOTÓN TEMPORAL PARA LIMPIAR BIOMETRÍA */}
-                      {__DEV__ && (
-                        <TouchableOpacity
-                          style={styles.clearBiometricButton}
-                          onPress={async () => {
-                            await biometricService.clearBiometricCredentials();
-                            await checkBiometricSupport();
-                            Alert.alert('Listo', 'Biometría limpiada. Ahora inicia sesión nuevamente.');
+                      <View style={styles.formContainer}>
+                        {/* Campo de usuario bloqueado */}
+                        <Input
+                          label="Usuario"
+                          placeholder="Usuario"
+                          value={username}
+                          onChangeText={() => { }} // No hace nada, campo bloqueado
+                          leftIcon="lock-closed"
+                          editable={false} // Bloqueado
+                          isFocused={false}
+                        />
+
+                        {/* Campo de contraseña para login manual */}
+                        <Input
+                          label="Contraseña"
+                          placeholder="Ingresa tu contraseña"
+                          value={password}
+                          onChangeText={(text) => {
+                            setPassword(text);
+                            clearError('password');
                           }}
+                          onFocus={() => setIsFocused({ ...isFocused, password: true })}
+                          onBlur={() => setIsFocused({ ...isFocused, password: false })}
+                          leftIcon="lock-closed-outline"
+                          rightIcon={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                          onRightIconPress={() => setShowPassword(!showPassword)}
+                          error={errors.password}
+                          isFocused={isFocused.password}
+                          secureTextEntry={!showPassword}
+                          autoCapitalize="none"
+                          editable={!isLoading}
+                          returnKeyType="done"
+                          onSubmitEditing={handleLogin}
+                        />
+
+                        {/* Botones lado a lado: Login + Biometría */}
+                        <View style={styles.biometricLoginRow}>
+                          <View style={{ flex: 1, marginRight: 12 }}>
+                            <Button
+                              title="INICIAR SESIÓN"
+                              onPress={handleLogin}
+                              loading={isLoading}
+                              variant="primary"
+                              size="large"
+                              disabled={isLoading}
+                            />
+                          </View>
+                          <TouchableOpacity
+                            style={styles.biometricIconButton}
+                            onPress={handleBiometricLogin}
+                            disabled={isLoading}
+                            activeOpacity={0.7}
+                          >
+                            <LinearGradient
+                              colors={[Colors.primary, Colors.primaryDark]}
+                              style={styles.biometricIconGradient}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 1 }}
+                            >
+                              <Ionicons
+                                name={getBiometricIcon(biometricType)}
+                                size={28}
+                                color="#ffffff"
+                              />
+                            </LinearGradient>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Enlace para cambiar de usuario */}
+                        <TouchableOpacity
+                          style={styles.switchUserButton}
+                          onPress={handleSwitchUser}
+                          activeOpacity={0.7}
                         >
-                          <Text style={styles.clearBiometricText}>
-                            🧹 Limpiar Biometría (DEV)
+                          <Text style={styles.switchUserText}>
+                            ¿Deseas iniciar sesión con otro usuario?
                           </Text>
                         </TouchableOpacity>
-                      )}
-
-                      <View style={styles.divider}>
-                        <View style={styles.dividerLine} />
-                        <Text style={styles.dividerText}>o inicia sesión con</Text>
-                        <View style={styles.dividerLine} />
                       </View>
-                    </Animated.View>
+                    </>
+                  ) : (
+                    <>
+                      {/* Modo login normal */}
+                      <View style={styles.formContainer}>
+                        <Input
+                          label="Usuario"
+                          placeholder="Ingresa tu usuario"
+                          value={username}
+                          onChangeText={(text) => {
+                            setUsername(text);
+                            clearError('username');
+                          }}
+                          onFocus={() => setIsFocused({ ...isFocused, username: true })}
+                          onBlur={() => setIsFocused({ ...isFocused, username: false })}
+                          leftIcon="person-outline"
+                          error={errors.username}
+                          isFocused={isFocused.username}
+                          showClearButton
+                          onClear={() => setUsername('')}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                        />
+
+                        <Input
+                          label="Contraseña"
+                          placeholder="Ingresa tu contraseña"
+                          value={password}
+                          onChangeText={(text) => {
+                            setPassword(text);
+                            clearError('password');
+                          }}
+                          onFocus={() => setIsFocused({ ...isFocused, password: true })}
+                          onBlur={() => setIsFocused({ ...isFocused, password: false })}
+                          leftIcon="lock-closed-outline"
+                          rightIcon={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                          onRightIconPress={() => setShowPassword(!showPassword)}
+                          error={errors.password}
+                          isFocused={isFocused.password}
+                          secureTextEntry={!showPassword}
+                          autoCapitalize="none"
+                          editable={!isLoading}
+                          returnKeyType="done"
+                          onSubmitEditing={handleLogin}
+                        />
+
+                        <View style={styles.buttonWrapper}>
+                          <Button
+                            title="INICIAR SESIÓN"
+                            onPress={handleLogin}
+                            loading={isLoading}
+                            icon="arrow-forward"
+                            iconPosition="right"
+                            variant="primary"
+                            size="large"
+                            disabled={isLoading}
+                          />
+                        </View>
+
+                        {/* Enlace para volver al modo biométrico si está disponible */}
+                        {biometricEnabled && biometricUsername && (
+                          <TouchableOpacity
+                            style={styles.backToBiometricButton}
+                            onPress={handleBackToBiometric}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name={getBiometricIcon(biometricType)} size={16} color={Colors.primary} />
+                            <Text style={styles.backToBiometricText}>
+                              Volver a {biometricFullName}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </>
                   )}
-
-                  <View style={styles.formContainer}>
-                    <Input
-                      label="Usuario"
-                      placeholder="Ingresa tu usuario"
-                      value={username}
-                      onChangeText={(text) => {
-                        setUsername(text);
-                        clearError('username');
-                      }}
-                      onFocus={() => setIsFocused({ ...isFocused, username: true })}
-                      onBlur={() => setIsFocused({ ...isFocused, username: false })}
-                      leftIcon="person-outline"
-                      error={errors.username}
-                      isFocused={isFocused.username}
-                      showClearButton
-                      onClear={() => setUsername('')}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      editable={!isLoading}
-                      returnKeyType="next"
-                    />
-
-                    <Input
-                      label="Contraseña"
-                      placeholder="Ingresa tu contraseña"
-                      value={password}
-                      onChangeText={(text) => {
-                        setPassword(text);
-                        clearError('password');
-                      }}
-                      onFocus={() => setIsFocused({ ...isFocused, password: true })}
-                      onBlur={() => setIsFocused({ ...isFocused, password: false })}
-                      leftIcon="lock-closed-outline"
-                      rightIcon={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      onRightIconPress={() => setShowPassword(!showPassword)}
-                      error={errors.password}
-                      isFocused={isFocused.password}
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                      editable={!isLoading}
-                      returnKeyType="done"
-                      onSubmitEditing={handleLogin}
-                    />
-
-                    <View style={styles.buttonWrapper}>
-                      <Button
-                        title="INICIAR SESIÓN"
-                        onPress={handleLogin}
-                        loading={isLoading}
-                        icon="arrow-forward"
-                        iconPosition="right"
-                        variant="primary"
-                        size="large"
-                        disabled={isLoading}
-                      />
-                    </View>
-                  </View>
                 </View>
 
                 {/* Footer moderno */}
                 <View style={styles.footer}>
-                  <View style={styles.securityBadge}>
-                    <Ionicons name="shield-checkmark" size={16} color={Colors.success} />
-                    <Text style={styles.securityText}>Conexión Segura</Text>
-                  </View>
                   <Text style={styles.versionText}>Versión 1.0.0 • Powered by Odoo</Text>
                 </View>
               </Animated.View>
@@ -526,7 +642,7 @@ export default function LoginScreen() {
           </KeyboardAvoidingView>
         </View>
       </>
-    </SafeAreaProvider>
+    </SafeAreaProvider >
   );
 }
 
@@ -538,33 +654,17 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  decorativeCircle1: {
-    position: 'absolute',
-    top: -100,
-    right: -80,
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: 'rgba(30, 64, 175, 0.08)',
-  },
-  decorativeCircle2: {
-    position: 'absolute',
-    bottom: -60,
-    left: -60,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(16, 185, 129, 0.06)',
-  },
-  decorativeSquare: {
-    position: 'absolute',
-    top: '45%',
-    right: -40,
-    width: 120,
-    height: 120,
-    borderRadius: 24,
-    backgroundColor: 'rgba(99, 102, 241, 0.05)',
-    transform: [{ rotate: '25deg' }],
+  headerBackground: {
+    width: Dimensions.get('window').width, // ← Agrega esto
+    paddingTop: Platform.OS === 'android' ? 30 : 40,
+    paddingBottom: 25,
+    paddingHorizontal: 24,
+    borderBottomLeftRadius: 45,
+    borderBottomRightRadius: 45,
+    alignItems: 'center',
+    zIndex: 1,
+    alignSelf: 'center', // ← Agrega esto para centrar
+    marginBottom: 10
   },
   scrollContent: {
     flexGrow: 1,
@@ -577,15 +677,20 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginTop: 30,
   },
   logoContainer: {
-    marginBottom: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 0,
   },
   logoGradient: {
     width: 80,
     height: 80,
-    borderRadius: 24,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
     ...Platform.select({
@@ -606,16 +711,19 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 15,
-    color: Colors.textSecondary,
-    marginBottom: 2,
+    color: 'rgba(255,255,255,0.9)',
     fontWeight: '500',
+    textAlign: 'center',
   },
   schoolName: {
-    fontSize: 13,
-    color: Colors.primary,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginTop: 2,
+    fontSize: 24, // Increased visibility
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 4,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.1)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   formCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -630,7 +738,7 @@ const styles = StyleSheet.create({
       },
     }),
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
+    borderColor: Colors.gray[200],
   },
   formContainer: {
     width: '100%',
@@ -704,24 +812,7 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: 'center',
     marginTop: 20,
-  },
-  securityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0fdf4',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#dcfce7',
-    marginBottom: 5,
-    gap: 6,
-  },
-  securityText: {
-    color: Colors.success,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    marginBottom: 30
   },
   versionText: {
     color: Colors.textTertiary,
@@ -742,5 +833,75 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  // Nuevos estilos para modo biométrico personalizado
+  profileSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginBottom: 16,
+  },
+  profileAvatarContainer: {
+    marginTop: -10,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 0,
+  },
+  profileName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  profileSubtext: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: -30,
+  },
+  biometricLoginRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  biometricIconButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  biometricIconGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  switchUserButton: {
+    marginTop: 20,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  switchUserText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  backToBiometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  backToBiometricText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '600',
   },
 });

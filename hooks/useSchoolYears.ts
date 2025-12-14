@@ -248,7 +248,7 @@ export const useSchoolYears = (): UseSchoolYearsResult => {
             }
             throw error;
         }
-    }, [currentYear, onRefresh]);
+    }, [currentYear]);
 
     const totalPages = Math.ceil(allYears.length / ITEMS_PER_PAGE);
 

@@ -24,16 +24,14 @@ import { BiometricDeviceCard } from '../../components/biometric/BiometricDeviceC
 import { showAlert } from '../../components/showAlert';
 import Colors from '../../constants/Colors';
 import { useAuth } from '../../contexts/AuthContext';
-import {
-  BiometricDevice,
-  getBiometricDevices,
-  removeBiometricFromCurrentDevice,
-} from '../../services/biometricService';
-import { getDeviceStats } from '../../utils/biometricHelpers';
+import * as authService from '../../services-odoo/authService';
+import type { BiometricDeviceBackend } from '../../services-odoo/biometricService';
+import * as biometricOdooService from '../../services-odoo/biometricService';
+import { getDeviceInfo } from '../../services/biometricService/deviceInfo';
 
 export default function BiometricDevicesScreen() {
   const { user } = useAuth();
-  const [devices, setDevices] = useState<BiometricDevice[]>([]);
+  const [devices, setDevices] = useState<BiometricDeviceBackend[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
@@ -44,20 +42,74 @@ export default function BiometricDevicesScreen() {
   const loadDevices = useCallback(async () => {
     try {
       if (__DEV__) {
-        console.log('🔄 Cargando dispositivos biométricos...');
+        console.log('🔄 Cargando dispositivos desde Odoo...');
       }
 
-      const loadedDevices = await getBiometricDevices();
-      setDevices(loadedDevices);
+      setLoading(true);
 
-      if (__DEV__) {
-        console.log(`✅ ${loadedDevices.length} dispositivo(s) encontrado(s)`);
+      // 1. Obtener device_id del dispositivo actual
+      const currentDeviceInfo = await getDeviceInfo();
+      const currentDeviceId = currentDeviceInfo.deviceId;
+
+      // 2. Obtener dispositivos desde Odoo
+      const result = await biometricOdooService.getUserDevices(currentDeviceId);
+
+      if (result.success && result.data) {
+        setDevices(result.data);
+
+        if (__DEV__) {
+          console.log(`✅ ${result.data.length} dispositivo(s) cargado(s) desde Odoo`);
+        }
+      } else {
+        if (__DEV__) {
+          console.error('❌ Error cargando dispositivos:', result.error);
+        }
+
+        // No mostrar alerta si la sesión ya expiró (handleSessionExpired() ya lo manejó)
+        if (!result.isSessionExpired) {
+          showAlert(
+            'Error',
+            'No se pudieron cargar los dispositivos biométricos del servidor'
+          );
+        }
+
+        // Fallback: intentar cargar desde almacenamiento local
+        try {
+          console.log('⚠️ Intentando cargar dispositivos locales como fallback...');
+          const { getBiometricDevices } = await import('../../services/biometricService');
+          const localDevices = await getBiometricDevices();
+
+          // Mapear dispositivos locales al formato backend
+          const mappedDevices: BiometricDeviceBackend[] = localDevices.map(d => ({
+            id: 0, // Sin ID de Odoo
+            deviceId: d.deviceId,
+            deviceName: d.deviceName,
+            platform: d.platform as 'ios' | 'android' | 'web',
+            osVersion: d.osVersion,
+            modelName: d.modelName,
+            brand: d.brand,
+            isPhysicalDevice: true,
+            biometricType: d.biometricType,
+            state: 'active' as const,
+            isEnabled: true,
+            isCurrentDevice: d.isCurrentDevice,
+            enrolledAt: d.enrolledAt,
+            lastUsedAt: d.lastUsedAt,
+            authCount: 0,
+            isRecentlyUsed: false,
+            isStale: false,
+            daysSinceLastUse: -1,
+            hasActiveSession: d.isCurrentDevice,
+          }));
+
+          setDevices(mappedDevices);
+        } catch (localError) {
+          console.error('❌ Error cargando dispositivos locales:', localError);
+        }
       }
     } catch (error) {
-      if (__DEV__) {
-        console.error('❌ Error cargando dispositivos:', error);
-      }
-      showAlert('Error', 'No se pudieron cargar los dispositivos biométricos');
+      console.error('❌ Error inesperado cargando dispositivos:', error);
+      showAlert('Error', 'Ocurrió un error al cargar los dispositivos');
     } finally {
       setLoading(false);
     }
@@ -67,6 +119,28 @@ export default function BiometricDevicesScreen() {
    * Refresca la lista de dispositivos
    */
   const onRefresh = useCallback(async () => {
+    const serverHealth = await authService.checkServerHealth();
+
+    if (!serverHealth.ok) {
+      if (__DEV__) {
+        console.log('🔴 Servidor no disponible durante refresh');
+      }
+      showAlert(
+        'Sin conexión',
+        'No se puede conectar con el servidor. Por favor, verifica tu conexión a internet e intenta nuevamente.'
+      );
+      return;
+    }
+
+    const validSession = await authService.verifySession();
+
+
+    if (!validSession) {
+      if (__DEV__) {
+        console.log('❌ Sesión no válida durante refresh');
+      }
+      return;
+    }
     setRefreshing(true);
     await loadDevices();
     setRefreshing(false);
@@ -76,43 +150,56 @@ export default function BiometricDevicesScreen() {
    * Maneja la eliminación de biometría de un dispositivo
    */
   const handleRevokeDevice = useCallback(
-    async (device: BiometricDevice) => {
+    async (device: BiometricDeviceBackend) => {
       Alert.alert(
         'Eliminar Biometría',
-        `¿Estás seguro de que deseas eliminar la autenticación biométrica de "${device.deviceName}"?\n\nDeberás iniciar sesión con usuario y contraseña la próxima vez.`,
+        `¿Estás seguro de que deseas eliminar la autenticación biométrica de "${device.deviceName}"?\n\n${device.isCurrentDevice
+          ? 'Este es tu dispositivo actual. Deberás iniciar sesión con usuario y contraseña la próxima vez.'
+          : 'Este dispositivo ya no podrá autenticarse con biometría.'
+        }`,
         [
-          {
-            text: 'Cancelar',
-            style: 'cancel',
-          },
+          { text: 'Cancelar', style: 'cancel' },
           {
             text: 'Eliminar',
             style: 'destructive',
             onPress: async () => {
               setIsRevoking(true);
-
               try {
-                if (__DEV__) {
-                  console.log('🗑️ Eliminando biometría del dispositivo:', device.deviceId);
+                // 1. Si es el dispositivo actual, eliminar credenciales locales
+                if (device.isCurrentDevice) {
+                  const { removeBiometricFromCurrentDevice } = await import('../../services/biometricService');
+                  const success = await removeBiometricFromCurrentDevice();
+
+                  if (!success) {
+                    showAlert('Error', 'No se pudo eliminar la biometría local');
+                    setIsRevoking(false);
+                    return;
+                  }
                 }
 
-                const success = await removeBiometricFromCurrentDevice();
+                // 2. Revocar en Odoo (si tiene ID de Odoo)
+                if (device.id && device.id > 0) {
+                  const result = await biometricOdooService.revokeDevice(device.id);
 
-                if (success) {
-                  showAlert(
-                    'Biometría Eliminada',
-                    'La autenticación biométrica ha sido eliminada de este dispositivo.'
-                  );
-
-                  // Recargar lista
-                  await loadDevices();
+                  if (result.success) {
+                    showAlert(
+                      'Biometría Eliminada',
+                      'La autenticación biométrica ha sido eliminada de este dispositivo.'
+                    );
+                    await loadDevices();
+                  } else {
+                    // No mostrar alerta si la sesión ya expiró
+                    if (!result.isSessionExpired) {
+                      showAlert('Error', result.error || 'No se pudo revocar el dispositivo en el servidor');
+                    }
+                  }
                 } else {
-                  showAlert('Error', 'No se pudo eliminar la biometría. Intenta nuevamente.');
+                  // Si no tiene ID de Odoo, solo mostrar confirmación local
+                  showAlert('Biometría Eliminada', 'La autenticación biométrica local ha sido eliminada.');
+                  await loadDevices();
                 }
               } catch (error) {
-                if (__DEV__) {
-                  console.error('❌ Error eliminando biometría:', error);
-                }
+                console.error('❌ Error revocando biometría:', error);
                 showAlert('Error', 'Ocurrió un error al eliminar la biometría');
               } finally {
                 setIsRevoking(false);
@@ -125,21 +212,10 @@ export default function BiometricDevicesScreen() {
     [loadDevices]
   );
 
-  /**
-   * Muestra detalles del dispositivo
-   */
-  const handleViewDetails = useCallback((device: BiometricDevice) => {
-    Alert.alert(
-      'Detalles del Dispositivo',
-      `ID: ${device.deviceId}\n\nModelo: ${device.brand} ${device.modelName}\nSistema: ${device.platform} ${device.osVersion}\nBiometría: ${device.biometricType}\n\nRegistrado: ${new Date(
-        device.enrolledAt
-      ).toLocaleString('es-ES')}\nÚltimo uso: ${
-        device.lastUsedAt
-          ? new Date(device.lastUsedAt).toLocaleString('es-ES')
-          : 'Nunca usado'
-      }`,
-      [{ text: 'Cerrar' }]
-    );
+  const handleViewDetails = useCallback((device: BiometricDeviceBackend) => {
+    // Esta función se puede expandir para navegar a una pantalla de detalles dedicada si fuera necesario,
+    // pero ahora la tarjeta maneja la expansión inline.
+    // Mantenemos esto por compatibilidad con la prop.
   }, []);
 
   // Cargar dispositivos al montar
@@ -148,7 +224,11 @@ export default function BiometricDevicesScreen() {
   }, [loadDevices]);
 
   // Calcular estadísticas
-  const stats = getDeviceStats(devices);
+  const stats = {
+    total: devices.length,
+    activeSessions: devices.filter(d => d.hasActiveSession).length,
+    revoked: devices.filter(d => d.state === 'revoked').length,
+  };
 
   if (!user) {
     return null;
@@ -179,24 +259,18 @@ export default function BiometricDevicesScreen() {
               </TouchableOpacity>
 
               <View style={styles.headerTextContainer}>
-                <Text style={styles.headerTitle}>Dispositivos Biométricos</Text>
+                <Text style={styles.headerTitle}>Dispositivos Conectados</Text>
                 <Text style={styles.headerSubtitle}>
-                  {user.fullName} • {user.username}
+                  {user.fullName}
                 </Text>
               </View>
 
               <TouchableOpacity
-                style={styles.refreshButton}
-                onPress={onRefresh}
+                style={styles.historyButton}
+                onPress={() => router.push('/admin/auth-history' as any)}
                 activeOpacity={0.7}
-                disabled={refreshing || loading}
               >
-                <Ionicons
-                  name="refresh"
-                  size={24}
-                  color="#fff"
-                  style={refreshing ? styles.spinning : undefined}
-                />
+                <Ionicons name="time-outline" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
           </LinearGradient>
@@ -214,53 +288,47 @@ export default function BiometricDevicesScreen() {
             }
           >
             <View style={styles.contentContainer}>
-              {/* Tarjeta de información */}
-              <View style={styles.infoCard}>
-                <View style={styles.infoHeader}>
-                  <Ionicons name="information-circle" size={24} color={Colors.primary} />
-                  <Text style={styles.infoTitle}>Gestión Local</Text>
-                </View>
-                <Text style={styles.infoText}>
-                  Actualmente solo puedes ver y gestionar la biometría de este dispositivo.
-                </Text>
+
+              {/* Resumen de Estado */}
+              <View style={styles.summaryGrid}>
+                <SummaryItem
+                  label="Dispositivos"
+                  value={stats.total.toString()}
+                  icon="hardware-chip-outline"
+                  color={Colors.primary}
+                />
+                <SummaryItem
+                  label="Sesiones"
+                  value={stats.activeSessions.toString()}
+                  icon="radio-button-on-outline"
+                  color={Colors.success}
+                />
+                <SummaryItem
+                  label="Revocados"
+                  value={stats.revoked.toString()}
+                  icon="trash-outline"
+                  color={Colors.error}
+                />
               </View>
 
-              {/* Estadísticas */}
-              {devices.length > 0 && (
-                <View style={styles.statsCard}>
-                  <Text style={styles.statsTitle}>Resumen</Text>
-                  <View style={styles.statsGrid}>
-                    <StatBox
-                      icon="phone-portrait"
-                      label="Dispositivos"
-                      value={stats.total.toString()}
-                      color={Colors.primary}
-                    />
-                    <StatBox
-                      icon="checkmark-circle"
-                      label="Activos"
-                      value={stats.recentlyUsed.toString()}
-                      color={Colors.success}
-                    />
-                    <StatBox
-                      icon="time"
-                      label="Inactivos"
-                      value={stats.stale.toString()}
-                      color={Colors.warning}
-                    />
-                  </View>
-                </View>
-              )}
+
+              {/* Tarjeta de información */}
+              <View style={styles.infoCard}>
+                <Ionicons name="shield-checkmark" size={20} color={Colors.primary} style={{ marginTop: 2 }} />
+                <Text style={styles.infoText}>
+                  Gestiona los dispositivos que tienen acceso biométrico a tu cuenta. Revoca el acceso si no reconoces alguno.
+                </Text>
+              </View>
 
               {/* Lista de dispositivos */}
               {loading ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="large" color={Colors.primary} />
-                  <Text style={styles.loadingText}>Cargando dispositivos...</Text>
+                  <Text style={styles.loadingText}>Sincronizando dispositivos...</Text>
                 </View>
               ) : devices.length > 0 ? (
                 <View style={styles.devicesSection}>
-                  <Text style={styles.sectionTitle}>Dispositivos Registrados</Text>
+                  <Text style={styles.sectionTitle}>Tus Dispositivos ({devices.length})</Text>
                   {devices.map((device) => (
                     <BiometricDeviceCard
                       key={device.deviceId}
@@ -278,15 +346,18 @@ export default function BiometricDevicesScreen() {
                   </View>
                   <Text style={styles.emptyTitle}>Sin Dispositivos</Text>
                   <Text style={styles.emptyText}>
-                    No tienes ningún dispositivo con autenticación biométrica habilitada.
+                    No tienes dispositivos vinculados con biometría activada.
                   </Text>
-                  <Text style={styles.emptyHint}>
-                    Habilita la biometría al iniciar sesión para acceder rápidamente.
-                  </Text>
+                  <TouchableOpacity
+                    style={styles.enableButton}
+                    onPress={() => router.back()} // O navegar a ajustes si hubiera
+                  >
+                    <Text style={styles.enableButtonText}>Volver al Inicio</Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
-              <View style={{ height: 20 }} />
+              <View style={{ height: 40 }} />
             </View>
           </ScrollView>
         </View>
@@ -295,24 +366,17 @@ export default function BiometricDevicesScreen() {
   );
 }
 
-interface StatBoxProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  color: string;
-}
-
-const StatBox: React.FC<StatBoxProps> = ({ icon, label, value, color }) => {
-  return (
-    <View style={styles.statBox}>
-      <View style={[styles.statIconContainer, { backgroundColor: color + '15' }]}>
-        <Ionicons name={icon} size={24} color={color} />
-      </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+const SummaryItem: React.FC<{ label: string; value: string; icon: any; color: string }> = ({ label, value, icon, color }) => (
+  <View style={styles.summaryItem}>
+    <View style={[styles.summaryIcon, { backgroundColor: color + '15' }]}>
+      <Ionicons name={icon} size={20} color={color} />
     </View>
-  );
-};
+    <View>
+      <Text style={styles.summaryValue}>{value}</Text>
+      <Text style={styles.summaryLabel}>{label}</Text>
+    </View>
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -320,11 +384,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   header: {
-    paddingTop: Platform.OS === 'android' ? 60 : 70,
+    paddingTop: Platform.OS === 'android' ? 50 : 60,
     paddingBottom: 24,
     paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   headerContent: {
     flexDirection: 'row',
@@ -343,17 +407,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
     color: '#fff',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.85)',
+    color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '500',
   },
-  refreshButton: {
+  historyButton: {
     width: 40,
     height: 40,
     borderRadius: 12,
@@ -361,84 +425,62 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  spinning: {
-  },
   content: {
     flex: 1,
   },
   contentContainer: {
     padding: 20,
   },
-  infoCard: {
-    backgroundColor: '#e0f2fe',
-    borderRadius: 16,
+  summaryGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
     padding: 16,
+    borderRadius: 20,
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#bae6fd',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
   },
-  infoHeader: {
+  summaryItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 8,
   },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.primary,
+  summaryIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  infoText: {
-    fontSize: 14,
-    color: '#0369a1',
-    lineHeight: 20,
-    fontWeight: '500',
-  },
-  statsCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-  },
-  statsTitle: {
+  summaryValue: {
     fontSize: 18,
     fontWeight: '800',
     color: Colors.textPrimary,
-    marginBottom: 16,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  statBox: {
-    flex: 1,
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-    padding: 16,
-  },
-  statIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
+  summaryLabel: {
+    fontSize: 11,
     color: Colors.textSecondary,
     fontWeight: '600',
+  },
+  infoCard: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: Colors.primary + '08',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   devicesSection: {
     marginBottom: 20,
@@ -448,6 +490,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.textPrimary,
     marginBottom: 16,
+    marginLeft: 4,
   },
   loadingContainer: {
     alignItems: 'center',
@@ -466,9 +509,9 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#f1f5f9',
     justifyContent: 'center',
     alignItems: 'center',
@@ -484,15 +527,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 24,
     paddingHorizontal: 40,
     lineHeight: 22,
   },
-  emptyHint: {
-    fontSize: 13,
-    color: Colors.textTertiary,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-    fontStyle: 'italic',
+  enableButton: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  enableButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

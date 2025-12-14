@@ -4,7 +4,7 @@
     "slug": "SchoolProject",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon-light.png",
+    "icon": "./assets/images/android-icon.png",
     "scheme": "schoolproject",
     "newArchEnabled": true,
     "ios": {
@@ -16,7 +16,8 @@
         "tinted": "./assets/images/icon-dark.png"
       },
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Usamos Face ID para permitirte iniciar sesión de forma rápida y segura en el sistema escolar."
+        "NSFaceIDUsageDescription": "Usamos Face ID para permitirte iniciar sesión de forma rápida y segura en el sistema escolar.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -80,14 +81,15 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "aac88740-ec55-48ab-be5b-d801c57a66ae"
+        "projectId": "1529be70-ed14-49fd-a9c9-18eb8ba4f15a"
       }
-    },
-    "updates": {
-      "url": "https://u.expo.dev/aac88740-ec55-48ab-be5b-d801c57a66ae"
     },
     "runtimeVersion": {
       "policy": "appVersion"
+    },
+    "owner": "schoolproject",
+    "updates": {
+      "url": "https://u.expo.dev/1529be70-ed14-49fd-a9c9-18eb8ba4f15a"
     }
   }
 }
