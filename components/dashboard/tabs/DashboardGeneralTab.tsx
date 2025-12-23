@@ -69,7 +69,7 @@ export const DashboardGeneralTab: React.FC<Props> = ({ data: d, loading }) => {
                     </View>
                 ) : d?.performanceByLevel?.levels?.length ? (
                     <View style={styles.levelCardsContainer}>
-                        {d.performanceByLevel.levels.map((lv, i) => {
+                        {(d.performanceByLevel?.levels || []).map((lv, i) => {
                             const style = getLevelStyle(lv.type);
                             const approvalPct = lv.total_students > 0
                                 ? (lv.approved_students / lv.total_students * 100)
@@ -89,8 +89,8 @@ export const DashboardGeneralTab: React.FC<Props> = ({ data: d, loading }) => {
                                             <Text style={styles.levelStatLabel}>Estudiantes</Text>
                                         </View>
                                         <View style={styles.levelStatItem}>
-                                            <Text style={[styles.levelStatValue, { color: lv.average >= 10 ? Colors.success : Colors.error }]}>
-                                                {lv.average?.toFixed(1) || '-'}
+                                            <Text style={[styles.levelStatValue, { color: (Number(lv.average) || 0) >= 10 ? Colors.success : Colors.error }]}>
+                                                {typeof lv.average === 'number' ? lv.average.toFixed(1) : '-'}
                                             </Text>
                                             <Text style={styles.levelStatLabel}>Promedio</Text>
                                         </View>
@@ -110,7 +110,7 @@ export const DashboardGeneralTab: React.FC<Props> = ({ data: d, loading }) => {
                                         <View style={styles.levelFooterItem}>
                                             <Ionicons name="checkmark-circle" size={14} color={Colors.success} />
                                             <Text style={[styles.levelFooterText, { color: Colors.success }]}>
-                                                {lv.approval_rate?.toFixed(0) || 0}% aprobación
+                                                {typeof lv.approval_rate === 'number' ? lv.approval_rate.toFixed(0) : 0}% aprobación
                                             </Text>
                                         </View>
                                         <View style={styles.levelFooterItem}>
@@ -232,8 +232,8 @@ export const DashboardGeneralTab: React.FC<Props> = ({ data: d, loading }) => {
                                     {s.type === 'secundary' ? 'Media' : s.type === 'primary' ? 'Prim.' : 'Pre'}
                                 </Text>
                                 <Text style={[styles.tableCell, styles.centerText]}>{s.total_students}</Text>
-                                <Text style={[styles.tableCell, styles.centerText, { color: s.average >= 10 ? Colors.success : Colors.error, fontWeight: '600' }]}>
-                                    {s.average?.toFixed(1)}
+                                <Text style={[styles.tableCell, styles.centerText, { color: (Number(s.average) || 0) >= 10 ? Colors.success : Colors.error, fontWeight: '600' }]}>
+                                    {typeof s.average === 'number' ? s.average.toFixed(1) : '-'}
                                 </Text>
                                 <View style={[styles.pillsContainer, { justifyContent: 'center', flex: 1 }]}>
                                     <View style={[styles.miniPill, { backgroundColor: (s.approval_rate >= 70 ? Colors.success : Colors.warning) + '20' }]}>
@@ -265,7 +265,7 @@ export const DashboardGeneralTab: React.FC<Props> = ({ data: d, loading }) => {
                                 <Text style={styles.topSection}>{st.section}</Text>
                             </View>
                             <View style={styles.topScore}>
-                                <Text style={styles.topAvg}>{st.use_literal ? st.literal_average : st.average?.toFixed(1)}</Text>
+                                <Text style={styles.topAvg}>{st.use_literal ? st.literal_average : (typeof st.average === 'number' ? st.average.toFixed(1) : '-')}</Text>
                             </View>
                         </ListRow>
                     ))

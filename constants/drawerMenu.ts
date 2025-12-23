@@ -135,30 +135,31 @@ export const DRAWER_MENU: DrawerMenuSection[] = [
         id: 'attendance',
         label: 'Asistencias',
         icon: 'checkbox-outline',
+        route: '/admin/attendance',
         children: [
             {
                 id: 'quick_register',
                 label: 'Registro Rápido',
                 icon: 'flash-outline',
-                disabled: true, // TODO: Wizard de registro rápido
+                route: '/admin/attendance/register',
             },
             {
                 id: 'student_attendance',
                 label: 'Estudiantes',
                 icon: 'people-outline',
-                disabled: true, // TODO: school.attendance type=student
+                route: '/admin/attendance/students',
             },
             {
                 id: 'staff_attendance',
                 label: 'Personal',
                 icon: 'person-outline',
-                disabled: true, // TODO: school.attendance type=employee
+                route: '/admin/attendance/staff',
             },
             {
                 id: 'all_attendance',
                 label: 'Todos los Registros',
                 icon: 'list-outline',
-                disabled: true, // TODO: Todas las asistencias
+                route: '/admin/attendance',
             },
         ],
     },
@@ -170,24 +171,25 @@ export const DRAWER_MENU: DrawerMenuSection[] = [
         id: 'schedule',
         label: 'Planificación',
         icon: 'calendar-outline',
+        route: '/admin/planning',
         children: [
             {
                 id: 'calendar_view',
                 label: 'Vista de Calendario',
                 icon: 'calendar-outline',
-                disabled: true, // TODO: Widget de calendario
+                route: '/admin/planning/calendar',
             },
             {
                 id: 'class_schedules',
                 label: 'Horarios de Clase',
                 icon: 'time-outline',
-                disabled: true, // TODO: school.schedule
+                route: '/admin/planning/timetables',
             },
             {
                 id: 'time_blocks',
                 label: 'Bloques Horarios',
-                icon: 'grid-outline',
-                disabled: true, // TODO: school.time.slot
+                icon: 'layers-outline',
+                route: '/admin/planning/time-slots',
             },
         ],
     },
