@@ -480,7 +480,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
-    elevation: 0,
     alignSelf: 'center', // Centrar verticalmente
   },
   avatar: {
@@ -512,7 +511,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 0,
     marginTop: 50,
   },
   offlineText: {
@@ -552,7 +550,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.15,
     shadowRadius: 24,
-    elevation: 8,
     aspectRatio: 1.0,
     justifyContent: 'space-between',
     overflow: 'hidden',
@@ -563,7 +560,6 @@ const styles = StyleSheet.create({
   cardDisabled: {
     opacity: 0.6,
     backgroundColor: '#f9fafb',
-    elevation: 0,
   },
   cardBackdropIcon: {
     position: 'absolute',
@@ -619,7 +615,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
-    elevation: 0,
   },
   infoHeader: {
     flexDirection: 'row',
@@ -706,7 +701,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
-    elevation: 0,
   },
   logoutGradient: {
     flexDirection: 'row',

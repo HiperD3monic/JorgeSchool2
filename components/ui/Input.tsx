@@ -119,7 +119,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.03, // Very soft
     shadowRadius: 10,
-    elevation: 0,
   },
   containerFocused: {
     borderColor: Colors.primary,
@@ -130,7 +129,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 0,
   },
   containerError: {
     borderColor: Colors.error,

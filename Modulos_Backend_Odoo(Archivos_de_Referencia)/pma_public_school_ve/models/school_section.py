@@ -6,6 +6,7 @@ from odoo.exceptions import UserError
 class SchoolSection(models.Model):
     _name = 'school.section'
     _description = 'School Section'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
 
     def _default_year(self):
         year_id = self.env['school.year'].search([('current', '=', True)], limit=1)
@@ -17,11 +18,12 @@ class SchoolSection(models.Model):
     @api.depends('section_id', 'year_id')
     def _compute_name(self):
         for record in self:
-            record.name = f"{record.section_id.name} - {record.year_id.name}" if record.section_id and record.year_id else ''
+            # Use display_name which includes the letter (e.g., "1er Grado A")
+            record.name = record.section_id.display_name if record.section_id else ''
 
-    year_id = fields.Many2one(comodel_name='school.year', string='Año Escolar', default=_default_year, required=True)
+    year_id = fields.Many2one(comodel_name='school.year', string='Año Escolar', default=_default_year, required=True, tracking=True)
 
-    section_id = fields.Many2one(comodel_name='school.register.section', string='Sección', domain="[('id', 'not in', used_section_ids)]")
+    section_id = fields.Many2one(comodel_name='school.register.section', string='Sección', domain="[('id', 'not in', used_section_ids)]", tracking=True)
 
     used_section_ids = fields.Many2many(comodel_name='school.register.section', string='Secciones utilizadas', compute='_compute_used_section_ids')
 
@@ -46,6 +48,17 @@ class SchoolSection(models.Model):
     student_ids = fields.One2many(comodel_name='school.student', inverse_name='section_id', string='Estudiantes', readonly=True)
 
     current = fields.Boolean(string='Actual', related='year_id.current', store=True)
+    
+    lapso_inscripcion = fields.Selection(
+        selection=[
+            ('1', 'Primer Lapso'),
+            ('2', 'Segundo Lapso'),
+            ('3', 'Tercer Lapso')
+        ],
+        string='Lapso de Inscripción',
+        readonly=True,
+        help='Lapso en el que se inscribió la sección'
+    )
 
     # Campos JSON para gráficos de rendimiento
     subjects_average_json = fields.Json(
@@ -57,7 +70,7 @@ class SchoolSection(models.Model):
     students_average_json = fields.Json(
         string='Promedios de Estudiantes (JSON)',
         compute='_compute_students_average_json',
-        store=True,
+        store=False,  # Always compute in real-time for dashboard
     )
 
     top_students_json = fields.Json(
@@ -68,7 +81,6 @@ class SchoolSection(models.Model):
 
     @api.depends('subject_ids', 'student_ids', 'student_ids.evaluation_score_ids', 
                  'student_ids.evaluation_score_ids.points_20', 
-                 'student_ids.evaluation_score_ids.points_100',
                  'student_ids.evaluation_score_ids.state_score',
                  'type', 'year_id')
     def _compute_subjects_average_json(self):
@@ -103,11 +115,8 @@ class SchoolSection(models.Model):
                     
                     student_id = student.student_id.id
                     
-                    # Agregar el puntaje según el tipo de evaluación
-                    if evaluation_type == '20':
-                        score_value = score.points_20
-                    else:  # '100'
-                        score_value = score.points_100
+                    # Agregar el puntaje (siempre base 20)
+                    score_value = score.points_20
                     
                     subjects_data[subject_id]['scores'].append(score_value)
                     
@@ -186,31 +195,68 @@ class SchoolSection(models.Model):
             approved_count = 0
             failed_count = 0
             
-            for student in record.student_ids.filtered(lambda s: s.current and s.state == 'done'):
+            active_students = record.student_ids.filtered(lambda s: s.current and s.state == 'done')
+            
+            for student in active_students:
                 perf_data = student.general_performance_json
-                if not perf_data or perf_data.get('total_subjects', 0) == 0:
-                    continue
                 
-                if perf_data.get('use_literal'):
-                    # Para literales, convertir a numérico aproximado
-                    literal = perf_data.get('literal_average', 'E')
-                    literal_weights = {'A': 18, 'B': 15, 'C': 12, 'D': 8, 'E': 4}
-                    avg = literal_weights.get(literal, 0)
+                # For Primaria: If no performance data, assume approved (observation-based)
+                if record.type == 'primary':
+                    if not perf_data or perf_data.get('total_subjects', 0) == 0:
+                        # Primaria without grades - assume approved with 'A' equivalent
+                        students_data.append({
+                            'student_id': student.student_id.id,
+                            'student_name': student.student_id.name,
+                            'average': 18,  # A equivalent
+                            'state': 'approve',
+                        })
+                        total_average += 18
+                        approved_count += 1
+                        continue
+                    
+                    # Has performance data
+                    if perf_data.get('use_literal'):
+                        literal = perf_data.get('literal_average', 'A')
+                        literal_weights = {'A': 18, 'B': 15, 'C': 12, 'D': 8, 'E': 4}
+                        avg = literal_weights.get(literal, 18)
+                    else:
+                        avg = perf_data.get('general_average', 18)
+                    
+                    students_data.append({
+                        'student_id': student.student_id.id,
+                        'student_name': student.student_id.name,
+                        'average': avg,
+                        'state': perf_data.get('general_state', 'approve'),
+                    })
+                    total_average += avg
+                    if perf_data.get('general_state', 'approve') == 'approve':
+                        approved_count += 1
+                    else:
+                        failed_count += 1
                 else:
-                    avg = perf_data.get('general_average', 0)
-                
-                students_data.append({
-                    'student_id': student.student_id.id,
-                    'student_name': student.student_id.name,
-                    'average': avg,
-                    'state': perf_data.get('general_state', 'failed'),
-                })
-                
-                total_average += avg
-                if perf_data.get('general_state') == 'approve':
-                    approved_count += 1
-                else:
-                    failed_count += 1
+                    # Media General - require performance data
+                    if not perf_data or perf_data.get('total_subjects', 0) == 0:
+                        continue
+                    
+                    if perf_data.get('use_literal'):
+                        literal = perf_data.get('literal_average', 'E')
+                        literal_weights = {'A': 18, 'B': 15, 'C': 12, 'D': 8, 'E': 4}
+                        avg = literal_weights.get(literal, 0)
+                    else:
+                        avg = perf_data.get('general_average', 0)
+                    
+                    students_data.append({
+                        'student_id': student.student_id.id,
+                        'student_name': student.student_id.name,
+                        'average': avg,
+                        'state': perf_data.get('general_state', 'failed'),
+                    })
+                    
+                    total_average += avg
+                    if perf_data.get('general_state') == 'approve':
+                        approved_count += 1
+                    else:
+                        failed_count += 1
             
             # Calcular promedio general de la sección
             general_average = 0.0
@@ -281,6 +327,14 @@ class SchoolSection(models.Model):
             }
             
             record.top_students_json = result
+    
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if 'year_id' in vals and 'lapso_inscripcion' not in vals:
+                year = self.env['school.year'].browse(vals['year_id'])
+                vals['lapso_inscripcion'] = year.current_lapso or '1'
+        return super().create(vals_list)
     
     def unlink(self):
         """Prevent deletion of enrolled sections with related records or in finished years"""

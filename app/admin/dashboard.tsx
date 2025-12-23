@@ -335,7 +335,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4 },
-      android: { elevation: 2 }
     })
   },
   tabScroll: { paddingHorizontal: 16, gap: 4 },
@@ -380,7 +379,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 4
   },
   offlineText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 

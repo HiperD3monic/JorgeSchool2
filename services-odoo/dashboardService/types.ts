@@ -302,6 +302,7 @@ export interface RecentEvaluation {
     subject: string;
     state: string;
     average: number;
+    lapso?: '1' | '2' | '3';
 }
 
 export interface RecentEvaluations {
@@ -319,6 +320,8 @@ export interface SchoolYear {
     startDateReal?: string;
     endDateReal?: string;
     isLocked: boolean;
+    currentLapso?: '1' | '2' | '3';
+    lapsoDisplay?: string;
 }
 
 /**

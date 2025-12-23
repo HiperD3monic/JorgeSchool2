@@ -685,7 +685,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.2,
     shadowRadius: 20,
-    elevation: 0,
   },
   logoGradient: {
     width: 80,
@@ -847,7 +846,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 0,
   },
   profileName: {
     fontSize: 22,

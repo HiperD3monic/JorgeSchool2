@@ -14,9 +14,10 @@ import { AnimatedBadge, Card, DistributionRowSkeleton, Empty, StatCardSkeleton, 
 interface Props {
     data: DashboardData | null;
     loading?: boolean;
+    selectedLapso?: 'all' | '1' | '2' | '3';
 }
 
-export const EvaluationsTab: React.FC<Props> = ({ data: d, loading }) => {
+export const EvaluationsTab: React.FC<Props> = ({ data: d, loading, selectedLapso = 'all' }) => {
     const [modalVisible, setModalVisible] = useState(false);
     const selectedEvalRef = useRef<RecentEvaluation | null>(null);
     const isLoading = loading || !d;
@@ -30,6 +31,12 @@ export const EvaluationsTab: React.FC<Props> = ({ data: d, loading }) => {
         setModalVisible(false);
         // Don't clear the ref - keep content visible during fade out
     };
+
+    // Filter evaluations by lapso
+    const filteredEvaluations = d?.recentEvaluations?.evaluations?.filter(e => {
+        if (selectedLapso === 'all') return true;
+        return e.lapso === selectedLapso;
+    }) || [];
 
     const total = d?.evaluationsStats?.total || 0;
     const byType = d?.evaluationsStats?.by_type;
@@ -149,7 +156,7 @@ export const EvaluationsTab: React.FC<Props> = ({ data: d, loading }) => {
                         <TableRowSkeleton columns={4} isAlt />
                         <TableRowSkeleton columns={4} />
                     </>
-                ) : d?.recentEvaluations?.evaluations?.length ? (
+                ) : filteredEvaluations.length ? (
                     <View style={styles.evalTable}>
                         {/* Gradient Header */}
                         <LinearGradient
@@ -165,7 +172,7 @@ export const EvaluationsTab: React.FC<Props> = ({ data: d, loading }) => {
                         </LinearGradient>
 
                         {/* Rows */}
-                        {d.recentEvaluations.evaluations.map((e, i) => (
+                        {filteredEvaluations.map((e, i) => (
                             <TouchableOpacity
                                 key={i}
                                 style={[styles.tableRow, i % 2 !== 0 && styles.tableRowAlt]}
@@ -190,7 +197,7 @@ export const EvaluationsTab: React.FC<Props> = ({ data: d, loading }) => {
                             </TouchableOpacity>
                         ))}
                     </View>
-                ) : <Empty message="Sin evaluaciones recientes" />}
+                ) : <Empty message={selectedLapso !== 'all' ? `Sin evaluaciones en el ${selectedLapso}° lapso` : "Sin evaluaciones recientes"} />}
             </Card>
 
             {/* Evaluation Detail Modal */}

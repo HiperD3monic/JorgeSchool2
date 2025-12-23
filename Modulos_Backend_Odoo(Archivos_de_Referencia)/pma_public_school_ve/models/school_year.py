@@ -44,6 +44,35 @@ class SchoolYear(models.Model):
     def _compute_is_locked(self):
         for record in self:
             record.is_locked = record.state == 'finished'
+    
+    current_lapso = fields.Selection(
+        selection=[
+            ('1', 'Primer Lapso'),
+            ('2', 'Segundo Lapso'),
+            ('3', 'Tercer Lapso')
+        ],
+        string='Lapso Actual',
+        default='1',
+        readonly=True,
+        help='Lapso activo del año escolar. Las evaluaciones se crean en este lapso.'
+    )
+    
+    lapso_display = fields.Char(
+        string='Lapso',
+        compute='_compute_lapso_display',
+        store=False
+    )
+    
+    @api.depends('current_lapso', 'state')
+    def _compute_lapso_display(self):
+        lapso_names = {'1': 'Primer Lapso', '2': 'Segundo Lapso', '3': 'Tercer Lapso'}
+        for record in self:
+            if record.state == 'active' and record.current_lapso:
+                record.lapso_display = lapso_names.get(record.current_lapso, '')
+            elif record.state == 'finished':
+                record.lapso_display = 'Finalizado'
+            else:
+                record.lapso_display = 'No iniciado'
 
 
     @api.model_create_multi
@@ -111,7 +140,7 @@ class SchoolYear(models.Model):
         return super().unlink()
     
     def action_start_year(self):
-        """Inicia el año escolar"""
+        """Inicia el año escolar en el Primer Lapso"""
         self.ensure_one()
         
         if self.state != 'draft':
@@ -128,11 +157,30 @@ class SchoolYear(models.Model):
         self.write({
             'state': 'active',
             'current': True,
+            'current_lapso': '1',
             'start_date_real': fields.Date.today(),
         })
         
         # Marcar otros años como no actuales
         self.search([('id', '!=', self.id), ('current', '=', True)]).write({'current': False})
+        
+        return True
+    
+    def action_next_lapso(self):
+        """Avanza al siguiente lapso"""
+        self.ensure_one()
+        
+        if self.state != 'active':
+            raise UserError("Solo se puede avanzar de lapso en años escolares activos.")
+        
+        if self.current_lapso == '1':
+            self.write({'current_lapso': '2'})
+        elif self.current_lapso == '2':
+            self.write({'current_lapso': '3'})
+        elif self.current_lapso == '3':
+            raise UserError(
+                "Ya está en el Tercer Lapso. Use 'Finalizar Año Escolar' para cerrar el año."
+            )
         
         return True
     
@@ -142,6 +190,12 @@ class SchoolYear(models.Model):
         
         if self.state != 'active':
             raise UserError("Solo se pueden finalizar años escolares que estén en curso.")
+        
+        if self.current_lapso != '3':
+            raise UserError(
+                f"Solo se puede finalizar el año escolar desde el Tercer Lapso. "
+                f"Actualmente está en el Lapso {self.current_lapso}."
+            )
         
         self.write({
             'state': 'finished',
@@ -178,6 +232,16 @@ class SchoolYear(models.Model):
     sections_primary_count = fields.Integer(compute='_compute_dashboard_counts', store=False)
     sections_secundary_count = fields.Integer(compute='_compute_dashboard_counts', store=False)
     
+    # Materias y docentes por nivel
+    subjects_secundary_count = fields.Integer(compute='_compute_dashboard_counts', store=False, 
+                                               string='N° de Materias Media General')
+    professors_primary_count = fields.Integer(compute='_compute_dashboard_counts', store=False,
+                                               string='N° de Docentes Primaria')
+    professors_pre_count = fields.Integer(compute='_compute_dashboard_counts', store=False,
+                                           string='N° de Docentes Preescolar')
+    mentions_count = fields.Integer(compute='_compute_dashboard_counts', store=False,
+                                     string='N° de Menciones')
+    
     # ===== CAMPOS M2M COMPUTADOS PARA ESTUDIANTES POR TIPO =====
     students_pre_ids = fields.Many2many(
         'school.student', compute='_compute_students_by_type', store=False,
@@ -199,6 +263,8 @@ class SchoolYear(models.Model):
     # ===== CAMPOS JSON PARA WIDGETS =====
     performance_by_level_json = fields.Json(compute='_compute_performance_by_level_json', store=False)
     students_distribution_json = fields.Json(compute='_compute_students_distribution_json', store=False)
+    sections_distribution_json = fields.Json(compute='_compute_sections_distribution_json', store=False)
+    professors_distribution_json = fields.Json(compute='_compute_professors_distribution_json', store=False)
     approval_rate_json = fields.Json(compute='_compute_approval_rate_json', store=False)
     sections_comparison_json = fields.Json(compute='_compute_sections_comparison_json', store=False)
     top_students_year_json = fields.Json(compute='_compute_top_students_year_json', store=False)
@@ -207,10 +273,17 @@ class SchoolYear(models.Model):
     evaluations_stats_json = fields.Json(compute='_compute_evaluations_stats_json', store=False)
     recent_evaluations_json = fields.Json(compute='_compute_recent_evaluations_json', store=False)
     
+    # Students Tab Dashboard (replaces list with statistics)
+    students_tab_json = fields.Json(compute='_compute_students_tab_json', store=False)
+    
+    # Preschool Observations Timeline
+    pre_observations_timeline_json = fields.Json(compute='_compute_pre_observations_timeline_json', store=False)
+    
     # Performance JSON por nivel específico
     secundary_performance_json = fields.Json(compute='_compute_level_performance_json', store=False)
     primary_performance_json = fields.Json(compute='_compute_level_performance_json', store=False)
     pre_performance_json = fields.Json(compute='_compute_level_performance_json', store=False)
+    tecnico_performance_json = fields.Json(compute='_compute_level_performance_json', store=False)
     
     # ===== NUEVOS CAMPOS JSON PARA DASHBOARD REFACTORIZADO =====
     # Dashboard JSON por nivel (incluye rendimiento, top estudiantes por sección, aprobación)
@@ -222,10 +295,13 @@ class SchoolYear(models.Model):
     # Estadísticas de profesores detalladas por tipo de estudiante
     professor_detailed_stats_json = fields.Json(compute='_compute_professor_detailed_stats_json', store=False)
     
+    # Dashboard consolidado de profesores (KPIs + Top + Distribución)
+    professor_dashboard_json = fields.Json(compute='_compute_professor_dashboard_json', store=False)
+    
     @api.depends('student_ids', 'student_ids.type', 'student_ids.state', 'student_ids.current',
                  'student_ids.mention_id', 'student_ids.mention_state')
     def _compute_students_by_type(self):
-        """Compute M2M fields for students grouped by type"""
+        """Compute filtered Many2many fields for students by type"""
         for year in self:
             active_students = year.student_ids.filtered(lambda s: s.current and s.state == 'done')
             
@@ -241,7 +317,71 @@ class SchoolYear(models.Model):
             year.students_secundary_tecnico_ids = active_students.filtered(
                 lambda s: s.type == 'secundary' and s.mention_state == 'enrolled'
             )
+
+    # ===== CAMPOS M2M COMPUTADOS PARA SECCIONES POR TIPO =====
+    sections_secundary_ids = fields.Many2many(
+        'school.section', compute='_compute_sections_by_type', store=False,
+        string='Secciones Media General'
+    )
+    sections_primary_ids_m2m = fields.Many2many(
+        'school.section', compute='_compute_sections_by_type', store=False,
+        string='Secciones Primaria'
+    )
+    sections_pre_ids_m2m = fields.Many2many(
+        'school.section', compute='_compute_sections_by_type', store=False,
+        string='Secciones Preescolar'
+    )
+
+    @api.depends('section_ids', 'section_ids.type')
+    def _compute_sections_by_type(self):
+        """Compute filtered Many2many fields for sections by type"""
+        for year in self:
+            year.sections_secundary_ids = year.section_ids.filtered(lambda s: s.type == 'secundary')
+            year.sections_primary_ids_m2m = year.section_ids.filtered(lambda s: s.type == 'primary')
+            year.sections_pre_ids_m2m = year.section_ids.filtered(lambda s: s.type == 'pre')
+            # Menciones activas
+            year.mentions_ids = self.env['school.mention.section'].search([
+                ('year_id', '=', year.id),
+                ('active', '=', True)
+            ])
     
+    mentions_ids = fields.Many2many(
+        'school.mention.section', compute='_compute_sections_by_type', store=False,
+        string='Menciones Técnicas'
+    )
+    
+    # FIX: Campo JSON para mostrar nombres de menciones sin el año
+    # El widget many2many_tags usa display_name que incluye el año escolar,
+    # causando truncamiento y redundancia. Este campo provee solo los nombres.
+    mentions_names_json = fields.Json(
+        string='Menciones (JSON)',
+        compute='_compute_mentions_names_json',
+        store=False
+    )
+    
+    @api.depends('section_ids')
+    def _compute_mentions_names_json(self):
+        """
+        Genera un JSON con los nombres de las menciones sin el año escolar.
+        Usado por el widget mentions_tags_widget para mostrar badges sin truncamiento.
+        """
+        for year in self:
+            mentions = self.env['school.mention.section'].search([
+                ('year_id', '=', year.id),
+                ('active', '=', True)
+            ])
+            year.mentions_names_json = {
+                'mentions': [
+                    {
+                        'id': m.id,
+                        'name': m.mention_id.name,  # Solo el nombre de la mención, sin año
+                        'student_count': m.student_count
+                    }
+                    for m in mentions
+                ]
+            }
+    
+
     @api.depends('student_ids', 'student_ids.state', 'student_ids.current', 'section_ids',
                  'student_ids.mention_state')
     def _compute_dashboard_counts(self):
@@ -289,6 +429,47 @@ class SchoolYear(models.Model):
             year.sections_pre_count = len(year.section_ids.filtered(lambda s: s.type == 'pre'))
             year.sections_primary_count = len(year.section_ids.filtered(lambda s: s.type == 'primary'))
             year.sections_secundary_count = len(year.section_ids.filtered(lambda s: s.type == 'secundary'))
+            
+            # Materias de Media General (secciones secundary)
+            secundary_sections = year.section_ids.filtered(lambda s: s.type == 'secundary')
+            subjects_secundary = set()
+            for section in secundary_sections:
+                for subject in section.subject_ids:
+                    subjects_secundary.add(subject.id)
+            year.subjects_secundary_count = len(subjects_secundary)
+            
+            # Docentes de Primaria
+            primary_sections = year.section_ids.filtered(lambda s: s.type == 'primary')
+            professors_primary = set()
+            for section in primary_sections:
+                for prof in section.professor_ids:
+                    professors_primary.add(prof.id)
+            year.professors_primary_count = len(professors_primary)
+            
+            # Docentes de Preescolar
+            pre_sections = year.section_ids.filtered(lambda s: s.type == 'pre')
+            professors_pre = set()
+            for section in pre_sections:
+                for prof in section.professor_ids:
+                    professors_pre.add(prof.id)
+            year.professors_pre_count = len(professors_pre)
+            
+            # Menciones activas
+            year.mentions_count = self.env['school.mention.section'].search_count([
+                ('year_id', '=', year.id),
+                ('active', '=', True)
+            ])
+    
+    def _strip_html(self, text):
+        """Remove HTML tags from text"""
+        import re
+        if not text:
+            return ''
+        # Remove HTML tags
+        clean = re.sub('<[^<]+?>', '', text)
+        # Unescape HTML entities
+        clean = clean.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+        return clean.strip()
     
     # Copia aquí TODOS los métodos _compute que te di en la primera respuesta:
     # - _compute_performance_by_level_json
@@ -302,13 +483,20 @@ class SchoolYear(models.Model):
     # - _compute_recent_evaluations_json
 
     @api.depends('student_ids', 'student_ids.general_performance_json',
-                 'section_ids')
+                 'student_ids.mention_scores_json', 'student_ids.mention_state',
+                 'student_ids.evaluation_score_ids', 'student_ids.evaluation_score_ids.literal_type',
+                 'section_ids', 'primary_performance_json')
     def _compute_performance_by_level_json(self):
-        """Calcula el rendimiento promedio por nivel educativo"""
+        """Calcula el rendimiento promedio por nivel educativo, incluyendo Medio Técnico"""
         
         def safe_get_perf(student):
             """Safely get performance dict"""
             perf = student.general_performance_json
+            return perf if isinstance(perf, dict) else {}
+        
+        def safe_get_mention_perf(student):
+            """Safely get mention performance dict"""
+            perf = student.mention_scores_json
             return perf if isinstance(perf, dict) else {}
         
         for record in self:
@@ -316,36 +504,116 @@ class SchoolYear(models.Model):
                 'levels': []
             }
             
+            # Preescolar, Primaria, Media General (estudiantes sin mención inscrita)
             for level_type, level_name in [('pre', 'Preescolar'), 
                                            ('primary', 'Primaria'), 
                                            ('secundary', 'Media General')]:
-                students = record.student_ids.filtered(
-                    lambda s: s.current and s.state == 'done' and s.type == level_type
-                )
+                if level_type == 'secundary':
+                    # Solo estudiantes sin mención inscrita
+                    students = record.student_ids.filtered(
+                        lambda s: s.current and s.state == 'done' and s.type == level_type and s.mention_state != 'enrolled'
+                    )
+                else:
+                    students = record.student_ids.filtered(
+                        lambda s: s.current and s.state == 'done' and s.type == level_type
+                    )
                 
                 if not students:
                     continue
                 
                 total_students = len(students)
-                approved = sum(1 for s in students 
-                              if safe_get_perf(s).get('general_state') == 'approve')
                 
-                # Calcular promedio general del nivel
+                # FIX: Para Primaria, leer directamente de primary_performance_json
+                # Este es el mismo campo que usa el tab "Rendimiento de Primaria"
+                if level_type == 'primary':
+                    # Leer del campo ya computado por _compute_level_performance_json
+                    perf_data = record.primary_performance_json
+                    if perf_data and isinstance(perf_data, dict):
+                        result['levels'].append({
+                            'type': level_type,
+                            'name': level_name,
+                            'total_students': perf_data.get('total_subjects', total_students),
+                            'approved_students': perf_data.get('subjects_approved', 0),
+                            'failed_students': perf_data.get('subjects_failed', 0),
+                            'average': perf_data.get('literal_average'),
+                            'approval_rate': perf_data.get('approval_percentage', 0),
+                            'use_literal': True
+                        })
+                    else:
+                        # Fallback si no hay datos
+                        result['levels'].append({
+                            'type': level_type,
+                            'name': level_name,
+                            'total_students': total_students,
+                            'approved_students': total_students,
+                            'failed_students': 0,
+                            'average': None,
+                            'approval_rate': 100,
+                            'use_literal': True
+                        })
+                else:
+                    # Para Preescolar y Media General, usar general_performance_json
+                    approved = sum(1 for s in students 
+                                  if safe_get_perf(s).get('general_state') == 'approve')
+                    
+                    # Calcular promedio general del nivel
+                    total_avg = 0
+                    count_with_avg = 0
+                    
+                    for student in students:
+                        perf = safe_get_perf(student)
+                        if perf.get('general_average'):
+                            total_avg += perf.get('general_average', 0)
+                            count_with_avg += 1
+                    
+                    avg = round(total_avg / count_with_avg, 2) if count_with_avg > 0 else 0
+                    approval_rate = round((approved / total_students * 100), 2) if total_students > 0 else 0
+                    
+                    result['levels'].append({
+                        'type': level_type,
+                        'name': level_name,
+                        'total_students': total_students,
+                        'approved_students': approved,
+                        'failed_students': total_students - approved,
+                        'average': avg,
+                        'approval_rate': approval_rate
+                    })
+            
+            # Medio Técnico: estudiantes con mención inscrita - rendimiento de mención
+            tecnico_students = record.student_ids.filtered(
+                lambda s: s.current and s.state == 'done' and s.type == 'secundary' and s.mention_state == 'enrolled'
+            )
+            
+            if tecnico_students:
+                total_students = len(tecnico_students)
+                approved = 0
                 total_avg = 0
                 count_with_avg = 0
                 
-                for student in students:
-                    perf = safe_get_perf(student)
-                    if perf.get('general_average'):
-                        total_avg += perf.get('general_average', 0)
-                        count_with_avg += 1
+                for student in tecnico_students:
+                    mention_perf = safe_get_mention_perf(student)
+                    if mention_perf.get('subjects'):
+                        # Usar rendimiento de mención
+                        if mention_perf.get('general_state') == 'approve':
+                            approved += 1
+                        if mention_perf.get('general_average'):
+                            total_avg += mention_perf.get('general_average', 0)
+                            count_with_avg += 1
+                    else:
+                        # Fallback a rendimiento general si no hay notas de mención
+                        perf = safe_get_perf(student)
+                        if perf.get('general_state') == 'approve':
+                            approved += 1
+                        if perf.get('general_average'):
+                            total_avg += perf.get('general_average', 0)
+                            count_with_avg += 1
                 
                 avg = round(total_avg / count_with_avg, 2) if count_with_avg > 0 else 0
                 approval_rate = round((approved / total_students * 100), 2) if total_students > 0 else 0
                 
                 result['levels'].append({
-                    'type': level_type,
-                    'name': level_name,
+                    'type': 'tecnico',
+                    'name': 'Medio Técnico',
                     'total_students': total_students,
                     'approved_students': approved,
                     'failed_students': total_students - approved,
@@ -355,33 +623,110 @@ class SchoolYear(models.Model):
             
             record.performance_by_level_json = result
     
-    @api.depends('student_ids', 'student_ids.type', 'student_ids.state')
+    @api.depends('student_ids', 'student_ids.type', 'student_ids.state', 'student_ids.mention_state')
     def _compute_students_distribution_json(self):
-        """Distribución de estudiantes por nivel (gráfico de torta)"""
+        """Distribución de estudiantes por nivel (gráfico de torta) - 4 niveles"""
         for record in self:
             active_students = record.student_ids.filtered(
                 lambda s: s.current and s.state == 'done'
             )
             
+            if not active_students:
+                record.students_distribution_json = {
+                    'labels': ['Preescolar', 'Primaria', 'Media General', 'Medio Técnico'],
+                    'data': [0, 0, 0, 0],
+                    'total': 0
+                }
+                continue
+            
             pre_count = len(active_students.filtered(lambda s: s.type == 'pre'))
             primary_count = len(active_students.filtered(lambda s: s.type == 'primary'))
-            secundary_count = len(active_students.filtered(lambda s: s.type == 'secundary'))
+            # Media General: secundary sin mención inscrita
+            secundary_count = len(active_students.filtered(
+                lambda s: s.type == 'secundary' and s.mention_state != 'enrolled'
+            ))
+            # Medio Técnico: secundary con mención inscrita
+            tecnico_count = len(active_students.filtered(
+                lambda s: s.type == 'secundary' and s.mention_state == 'enrolled'
+            ))
             
             record.students_distribution_json = {
-                'labels': ['Preescolar', 'Primaria', 'Media General'],
-                'data': [pre_count, primary_count, secundary_count],
+                'labels': ['Preescolar', 'Primaria', 'Media General', 'Medio Técnico'],
+                'data': [pre_count, primary_count, secundary_count, tecnico_count],
                 'total': len(active_students)
             }
     
-    @api.depends('student_ids', 'student_ids.general_performance_json')
+    @api.depends('section_ids', 'section_ids.type')
+    def _compute_sections_distribution_json(self):
+        """Distribución de secciones por nivel (gráfico de torta) - 3 niveles principales
+        Nota: Técnico Medio usa las mismas secciones que Media General pero con menciones inscritas.
+        Para el conteo total consistente, solo contamos section_ids.
+        """
+        for record in self:
+            # Filter sections by type
+            pre_count = len(record.section_ids.filtered(lambda s: s.type == 'pre'))
+            primary_count = len(record.section_ids.filtered(lambda s: s.type == 'primary'))
+            secundary_count = len(record.section_ids.filtered(lambda s: s.type == 'secundary'))
+            total = len(record.section_ids)  # Use same count as total_sections_count
+            
+            record.sections_distribution_json = {
+                'labels': ['Preescolar', 'Primaria', 'Media General'],
+                'data': [pre_count, primary_count, secundary_count],
+                'total': total
+            }
+    
+    def _compute_professors_distribution_json(self):
+        """Distribución de profesores por nivel (gráfico de torta) - 3 niveles
+        Nota: Técnico Medio se incluye en Media General ya que son los mismos profesores.
+        """
+        Professor = self.env['school.professor']
+        for record in self:
+            all_professors = Professor.search([('year_id', '=', record.id)])
+            
+            pre_count = 0
+            primary_count = 0
+            secundary_count = 0  # Includes Técnico Medio
+            
+            for prof in all_professors:
+                counted = False
+                # Check section_ids for pre/primary (direct assignment)
+                if prof.section_ids:
+                    for sec in prof.section_ids:
+                        if sec.type == 'pre':
+                            pre_count += 1
+                            counted = True
+                            break
+                        elif sec.type == 'primary':
+                            primary_count += 1
+                            counted = True
+                            break
+                # Check subjects for secundary (includes técnico - all count as secundary)
+                if not counted and prof.subject_ids:
+                    secundary_count += 1
+            
+            total = len(all_professors)
+            record.professors_distribution_json = {
+                'labels': ['Preescolar', 'Primaria', 'Media General'],
+                'data': [pre_count, primary_count, secundary_count],
+                'total': total
+            }
+    
+    @api.depends('student_ids', 'student_ids.general_performance_json', 
+                 'student_ids.mention_scores_json', 'student_ids.mention_state')
     def _compute_approval_rate_json(self):
-        """Tasa de aprobación general del año"""
+        """Tasa de aprobación general del año - promedio de porcentajes por nivel"""
         
         def safe_get_state(student):
             perf = student.general_performance_json
             if isinstance(perf, dict):
                 return perf.get('general_state')
             return 'failed'
+        
+        def safe_get_mention_state(student):
+            perf = student.mention_scores_json
+            if isinstance(perf, dict) and perf.get('subjects'):
+                return perf.get('general_state', 'failed')
+            return safe_get_state(student)  # Fallback
         
         for record in self:
             active_students = record.student_ids.filtered(
@@ -393,29 +738,228 @@ class SchoolYear(models.Model):
                     'total': 0,
                     'approved': 0,
                     'failed': 0,
-                    'rate': 0
+                    'rate': 0,
+                    'by_level': []
                 }
                 continue
             
-            approved = sum(1 for s in active_students if safe_get_state(s) == 'approve')
-            failed = len(active_students) - approved
-            rate = round((approved / len(active_students) * 100), 2)
+            # Calcular aprobación por nivel
+            levels_data = []
+            level_rates = []
+            
+            # Preescolar
+            pre_students = active_students.filtered(lambda s: s.type == 'pre')
+            if pre_students:
+                pre_approved = sum(1 for s in pre_students if safe_get_state(s) == 'approve')
+                pre_rate = round((pre_approved / len(pre_students) * 100), 2)
+                levels_data.append({'name': 'Preescolar', 'rate': pre_rate, 'count': len(pre_students)})
+                level_rates.append(pre_rate)
+            
+            # Primaria
+            primary_students = active_students.filtered(lambda s: s.type == 'primary')
+            if primary_students:
+                primary_approved = sum(1 for s in primary_students if safe_get_state(s) == 'approve')
+                primary_rate = round((primary_approved / len(primary_students) * 100), 2)
+                levels_data.append({'name': 'Primaria', 'rate': primary_rate, 'count': len(primary_students)})
+                level_rates.append(primary_rate)
+            
+            # Media General (sin mención)
+            secundary_students = active_students.filtered(
+                lambda s: s.type == 'secundary' and s.mention_state != 'enrolled'
+            )
+            if secundary_students:
+                secundary_approved = sum(1 for s in secundary_students if safe_get_state(s) == 'approve')
+                secundary_rate = round((secundary_approved / len(secundary_students) * 100), 2)
+                levels_data.append({'name': 'Media General', 'rate': secundary_rate, 'count': len(secundary_students)})
+                level_rates.append(secundary_rate)
+            
+            # Medio Técnico (con mención)
+            tecnico_students = active_students.filtered(
+                lambda s: s.type == 'secundary' and s.mention_state == 'enrolled'
+            )
+            if tecnico_students:
+                tecnico_approved = sum(1 for s in tecnico_students if safe_get_mention_state(s) == 'approve')
+                tecnico_rate = round((tecnico_approved / len(tecnico_students) * 100), 2)
+                levels_data.append({'name': 'Medio Técnico', 'rate': tecnico_rate, 'count': len(tecnico_students)})
+                level_rates.append(tecnico_rate)
+            
+            # Calcular tasa promedio de los porcentajes de cada nivel
+            avg_rate = round(sum(level_rates) / len(level_rates), 2) if level_rates else 0
+            
+            # Totales absolutos
+            total_approved = sum(1 for s in active_students if safe_get_state(s) == 'approve')
+            total_failed = len(active_students) - total_approved
             
             record.approval_rate_json = {
                 'total': len(active_students),
-                'approved': approved,
-                'failed': failed,
-                'rate': rate
+                'approved': total_approved,
+                'failed': total_failed,
+                'rate': avg_rate,
+                'by_level': levels_data
+            }
+    
+    @api.depends('student_ids', 'student_ids.type', 'student_ids.state', 'student_ids.current',
+                 'student_ids.general_performance_json', 'student_ids.student_id')
+    def _compute_students_tab_json(self):
+        """Estadísticas y top performers para el tab de Estudiantes"""
+        
+        def safe_get_average(student):
+            perf = student.general_performance_json
+            if isinstance(perf, dict):
+                return perf.get('general_average', 0) or 0
+            return 0
+        
+        def safe_get_state(student):
+            perf = student.general_performance_json
+            if isinstance(perf, dict):
+                return perf.get('general_state', 'failed')
+            return 'failed'
+        
+        for record in self:
+            active_students = record.student_ids.filtered(
+                lambda s: s.current and s.state == 'done'
+            )
+            
+            if not active_students:
+                record.students_tab_json = {
+                    'total': 0,
+                    'by_gender': {'M': 0, 'F': 0},
+                    'by_state': {'done': 0, 'draft': 0, 'cancel': 0},
+                    'by_level': [],
+                    'top_performers': [],
+                    'at_risk': []
+                }
+                continue
+            
+            # Distribution by gender (sex field)
+            all_students = record.student_ids.filtered(lambda s: s.current)
+            male_count = len(all_students.filtered(
+                lambda s: s.student_id and s.student_id.sex == 'M'
+            ))
+            female_count = len(all_students.filtered(
+                lambda s: s.student_id and s.student_id.sex == 'F'
+            ))
+            
+            # Distribution by approval status
+            approved_count = sum(1 for s in active_students if safe_get_state(s) == 'approve')
+            failed_count = len(active_students) - approved_count
+            
+            # Distribution by state
+            done_count = len(record.student_ids.filtered(lambda s: s.current and s.state == 'done'))
+            draft_count = len(record.student_ids.filtered(lambda s: s.current and s.state == 'draft'))
+            cancel_count = len(record.student_ids.filtered(lambda s: s.current and s.state == 'cancel'))
+            
+            # Distribution by level (reuse existing logic)
+            pre_count = len(active_students.filtered(lambda s: s.type == 'pre'))
+            primary_count = len(active_students.filtered(lambda s: s.type == 'primary'))
+            secundary_count = len(active_students.filtered(
+                lambda s: s.type == 'secundary' and s.mention_state != 'enrolled'
+            ))
+            tecnico_count = len(active_students.filtered(
+                lambda s: s.type == 'secundary' and s.mention_state == 'enrolled'
+            ))
+            
+            by_level = [
+                {'name': 'Preescolar', 'count': pre_count, 'color': '#FFB300'},
+                {'name': 'Primaria', 'count': primary_count, 'color': '#43A047'},
+                {'name': 'Media General', 'count': secundary_count, 'color': '#1E88E5'},
+                {'name': 'Medio Técnico', 'count': tecnico_count, 'color': '#8E24AA'}
+            ]
+            
+            # Top 10 performers (excluding preescolar - no numeric grades)
+            scorable_students = active_students.filtered(lambda s: s.type in ['primary', 'secundary'])
+            sorted_by_avg = sorted(scorable_students, key=lambda s: safe_get_average(s), reverse=True)
+            
+            top_performers = []
+            for student in sorted_by_avg[:10]:
+                avg = safe_get_average(student)
+                if avg > 0:
+                    top_performers.append({
+                        'id': student.id,
+                        'name': student.student_id.name if student.student_id else 'Sin nombre',
+                        'section': student.section_id.section_id.display_name if student.section_id and student.section_id.section_id else '',
+                        'level': student.type,
+                        'average': round(avg, 2),
+                        'state': safe_get_state(student)
+                    })
+            
+            # Top 10 at risk (lowest performers with grades, excluding top performers)
+            top_performer_ids = {s['id'] for s in top_performers}
+            # Get students with grades, sorted by average ascending (lowest first)
+            students_with_grades = [s for s in scorable_students if safe_get_average(s) > 0]
+            sorted_by_avg_asc = sorted(students_with_grades, key=lambda s: safe_get_average(s))
+            
+            at_risk = []
+            for student in sorted_by_avg_asc:
+                if student.id in top_performer_ids:
+                    continue  # Skip if already in top performers
+                avg = safe_get_average(student)
+                at_risk.append({
+                    'id': student.id,
+                    'name': student.student_id.name if student.student_id else 'Sin nombre',
+                    'section': student.section_id.section_id.display_name if student.section_id and student.section_id.section_id else '',
+                    'level': student.type,
+                    'average': round(avg, 2),
+                    'state': safe_get_state(student)
+                })
+                if len(at_risk) >= 10:
+                    break
+            
+            record.students_tab_json = {
+                'total': len(active_students),
+                'by_gender': {'M': male_count, 'F': female_count},
+                'by_approval': {'approved': approved_count, 'failed': failed_count},
+                'by_state': {'done': done_count, 'draft': draft_count, 'cancel': cancel_count},
+                'by_level': by_level,
+                'top_performers': top_performers,
+                'at_risk': at_risk
+            }
+    
+    @api.depends('student_ids', 'student_ids.evaluation_score_ids')
+    def _compute_pre_observations_timeline_json(self):
+        """Timeline de las últimas observaciones de preescolar"""
+        for record in self:
+            # Get evaluation scores for preschool students with observations
+            scores = self.env['school.evaluation.score'].search([
+                ('year_id', '=', record.id),
+                ('type', '=', 'pre'),
+                ('observation', '!=', False),
+                ('observation', '!=', '')
+            ], order='create_date desc', limit=15)
+            
+            timeline = []
+            for score in scores:
+                timeline.append({
+                    'id': score.id,
+                    'student_name': score.student_id.student_id.name if score.student_id and score.student_id.student_id else 'Estudiante',
+                    'section': score.student_id.section_id.section_id.display_name if score.student_id and score.student_id.section_id and score.student_id.section_id.section_id else '',
+                    'observation': self._strip_html(score.observation[:200] + '...' if len(score.observation or '') > 200 else score.observation),
+                    'date': score.create_date.strftime('%d/%m/%Y %I:%M %p') if score.create_date else '',
+                    'professor': score.evaluation_id.professor_id.name if score.evaluation_id and score.evaluation_id.professor_id else '',
+                    'evaluation_name': score.evaluation_id.name if score.evaluation_id else ''
+                })
+            
+            record.pre_observations_timeline_json = {
+                'total': len(timeline),
+                'timeline': timeline
             }
     
     @api.depends('section_ids', 'section_ids.students_average_json')
     def _compute_sections_comparison_json(self):
-        """Comparación de rendimiento entre secciones"""
+        """Comparación de rendimiento - mejor sección por nivel"""
         for record in self:
             result = {
                 'sections': []
             }
             
+            # Agrupar secciones por tipo y encontrar la mejor de cada nivel
+            sections_by_type = {
+                'primary': [],
+                'secundary': [],
+                'tecnico': []  # Para menciones
+            }
+            
+            # Secciones regulares (primaria y media general)
             for section in record.section_ids:
                 if section.type not in ['secundary', 'primary']:
                     continue
@@ -424,61 +968,166 @@ class SchoolYear(models.Model):
                 if not stats or stats.get('total_students', 0) == 0:
                     continue
                 
-                result['sections'].append({
+                section_data = {
                     'section_id': section.id,
-                    'section_name': section.section_id.name,
+                    'section_name': section.section_id.display_name if section.section_id else section.name,
                     'type': section.type,
+                    'type_name': 'Primaria' if section.type == 'primary' else 'Media General',
                     'average': stats.get('general_average', 0),
                     'total_students': stats.get('total_students', 0),
                     'approved_students': stats.get('approved_students', 0),
                     'failed_students': stats.get('failed_students', 0),
                     'approval_rate': round((stats.get('approved_students', 0) / 
                                            stats.get('total_students', 1) * 100), 2)
-                })
+                }
+                
+                sections_by_type[section.type].append(section_data)
             
-            # Ordenar por promedio descendente
-            result['sections'].sort(key=lambda x: x['average'], reverse=True)
+            # Menciones (Medio Técnico)
+            mention_sections = self.env['school.mention.section'].search([
+                ('year_id', '=', record.id),
+                ('active', '=', True)
+            ])
+            
+            for mention_section in mention_sections:
+                stats = mention_section.students_average_json
+                if not stats or stats.get('total_students', 0) == 0:
+                    continue
+                
+                section_data = {
+                    'section_id': mention_section.id,
+                    'section_name': mention_section.mention_id.name,
+                    'type': 'tecnico',
+                    'type_name': 'Medio Técnico',
+                    'average': stats.get('general_average', 0),
+                    'total_students': stats.get('total_students', 0),
+                    'approved_students': stats.get('approved_students', 0),
+                    'failed_students': stats.get('failed_students', 0),
+                    'approval_rate': round((stats.get('approved_students', 0) / 
+                                           stats.get('total_students', 1) * 100), 2)
+                }
+                
+                sections_by_type['tecnico'].append(section_data)
+            
+            # Obtener la mejor sección de cada nivel (mayor promedio)
+            for level_type in ['primary', 'secundary', 'tecnico']:
+                if sections_by_type[level_type]:
+                    # Ordenar por promedio descendente y tomar la primera
+                    sections_by_type[level_type].sort(key=lambda x: x['average'], reverse=True)
+                    best_section = sections_by_type[level_type][0]
+                    result['sections'].append(best_section)
+            
             record.sections_comparison_json = result
     
-    @api.depends('student_ids', 'student_ids.general_performance_json')
+    @api.depends('student_ids', 'student_ids.general_performance_json',
+                 'student_ids.mention_scores_json', 'student_ids.mention_state')
     def _compute_top_students_year_json(self):
-        """Top 10 mejores estudiantes del año"""
+        """Top 9 mejores estudiantes del año - 3 por nivel (Primaria, Media General, Medio Técnico)"""
+        
+        def get_student_avg(student, use_mention=False, is_primary=False):
+            """Get average for sorting"""
+            if use_mention:
+                perf = student.mention_scores_json
+                if isinstance(perf, dict) and perf.get('subjects'):
+                    return perf.get('general_average', 0)
+                perf = student.general_performance_json
+            else:
+                perf = student.general_performance_json
+            
+            if not isinstance(perf, dict):
+                # For Primaria: assume approved with 'A' equivalent
+                return 18 if is_primary else 0
+                
+            if perf.get('use_literal'):
+                literal = perf.get('literal_average', 'A' if is_primary else 'E')
+                literal_weights = {'A': 18, 'B': 15, 'C': 12, 'D': 8, 'E': 4}
+                return literal_weights.get(literal, 18 if is_primary else 0)
+            return perf.get('general_average', 18 if is_primary else 0)
+        
+        def build_student_data(student, use_mention=False, is_primary=False):
+            """Build student data dict"""
+            if use_mention:
+                perf = student.mention_scores_json
+                if isinstance(perf, dict) and perf.get('subjects'):
+                    return {
+                        'student_id': student.student_id.id,
+                        'student_name': student.student_id.name,
+                        'section': student.mention_section_id.mention_id.name if student.mention_section_id else '',
+                        'average': perf.get('general_average', 0),
+                        'literal_average': None,
+                        'state': perf.get('general_state', 'failed'),
+                        'use_literal': False
+                    }
+            
+            perf = student.general_performance_json
+            
+            # For Primaria: always return literal data (they use observation-based grading)
+            if is_primary:
+                # Primaria doesn't have numeric grades - always return approved with literal
+                return {
+                    'student_id': student.student_id.id,
+                    'student_name': student.student_id.name,
+                    'section': student.section_id.section_id.display_name if student.section_id and student.section_id.section_id else '',
+                    'average': 18,
+                    'literal_average': 'A',
+                    'state': 'approve',
+                    'use_literal': True
+                }
+            
+            # For non-Primaria: require performance data
+            if not isinstance(perf, dict) or not perf or perf.get('total_subjects', 0) == 0:
+                return None
+                
+            return {
+                'student_id': student.student_id.id,
+                'student_name': student.student_id.name,
+                'section': student.section_id.section_id.display_name if student.section_id and student.section_id.section_id else '',
+                'average': get_student_avg(student),
+                'literal_average': perf.get('literal_average'),
+                'state': perf.get('general_state', 'failed'),
+                'use_literal': perf.get('use_literal', False)
+            }
+        
         for record in self:
             active_students = record.student_ids.filtered(
                 lambda s: s.current and s.state == 'done'
             )
             
-            students_data = []
-            for student in active_students:
-                perf = student.general_performance_json
-                # Handle False or non-dict values
-                if not isinstance(perf, dict) or perf.get('total_subjects', 0) == 0:
-                    continue
-                
-                if perf.get('use_literal'):
-                    literal = perf.get('literal_average', 'E')
-                    literal_weights = {'A': 18, 'B': 15, 'C': 12, 'D': 8, 'E': 4}
-                    avg = literal_weights.get(literal, 0)
-                else:
-                    avg = perf.get('general_average', 0)
-                
-                students_data.append({
-                    'student_id': student.student_id.id,
-                    'student_name': student.student_id.name,
-                    'section': student.section_id.section_id.name if student.section_id.section_id else '',
-                    'average': avg,
-                    'literal_average': perf.get('literal_average'),
-                    'state': perf.get('general_state', 'failed'),
-                    'use_literal': perf.get('use_literal', False)
-                })
-            
-            # Ordenar y tomar top 10
-            students_data.sort(key=lambda x: x['average'], reverse=True)
-            top_10 = students_data[:10]
-            
-            record.top_students_year_json = {
-                'top_students': top_10
+            result = {
+                'top_primary': [],
+                'top_secundary': [],
+                'top_tecnico': []
             }
+            
+            # Primaria: top 3 (include even without performance data)
+            primary_students = active_students.filtered(lambda s: s.type == 'primary')
+            primary_sorted = sorted(primary_students, key=lambda s: get_student_avg(s, is_primary=True), reverse=True)
+            for student in primary_sorted[:3]:
+                data = build_student_data(student, is_primary=True)
+                if data:
+                    result['top_primary'].append(data)
+            
+            # Media General: top 3 (sin mención)
+            secundary_students = active_students.filtered(
+                lambda s: s.type == 'secundary' and s.mention_state != 'enrolled'
+            )
+            secundary_sorted = sorted(secundary_students, key=lambda s: get_student_avg(s), reverse=True)
+            for student in secundary_sorted[:3]:
+                data = build_student_data(student)
+                if data and data['average'] > 0:
+                    result['top_secundary'].append(data)
+            
+            # Medio Técnico: top 3 (con mención)
+            tecnico_students = active_students.filtered(
+                lambda s: s.type == 'secundary' and s.mention_state == 'enrolled'
+            )
+            tecnico_sorted = sorted(tecnico_students, key=lambda s: get_student_avg(s, use_mention=True), reverse=True)
+            for student in tecnico_sorted[:3]:
+                data = build_student_data(student, use_mention=True)
+                if data and data['average'] > 0:
+                    result['top_tecnico'].append(data)
+            
+            record.top_students_year_json = result
     
     @api.depends('section_ids.professor_ids', 'section_ids.subject_ids')
     def _compute_professor_summary_json(self):
@@ -518,6 +1167,121 @@ class SchoolYear(models.Model):
             record.professor_summary_json = {
                 'professors': professors_data,
                 'total': len(professors_data)
+            }
+    
+    def _compute_professor_dashboard_json(self):
+        """Dashboard consolidado de profesores con KPIs, top 5 y distribución por nivel"""
+        for record in self:
+            professors = self.env['school.professor'].search([
+                ('year_id', '=', record.id)
+            ])
+            
+            # Totales
+            total_professors = len(professors)
+            total_subjects = 0
+            total_evaluations = 0
+            all_scores = []
+            
+            # Datos por profesor para ranking
+            professors_ranking = []
+            
+            # Distribución por nivel
+            distribution = {
+                'pre': 0,
+                'primary': 0,
+                'secundary': 0,
+                'tecnico': 0
+            }
+            
+            for prof in professors:
+                # Materias del profesor
+                subjects = self.env['school.subject'].search([
+                    ('professor_id', '=', prof.id),
+                    ('year_id', '=', record.id)
+                ])
+                subjects_count = len(subjects)
+                total_subjects += subjects_count
+                
+                # Evaluaciones del profesor
+                evaluations = self.env['school.evaluation'].search([
+                    ('professor_id', '=', prof.id),
+                    ('year_id', '=', record.id)
+                ])
+                evaluations_count = len(evaluations)
+                total_evaluations += evaluations_count
+                
+                # Calcular promedio del profesor (de sus evaluaciones)
+                prof_scores = []
+                for evaluation in evaluations:
+                    # Get scores from evaluation_score_ids
+                    for score_line in evaluation.evaluation_score_ids:
+                        if score_line.points_20:
+                            try:
+                                score = float(score_line.points_20)
+                                prof_scores.append(score)
+                                all_scores.append(score)
+                            except (ValueError, TypeError):
+                                pass
+                
+                prof_average = round(sum(prof_scores) / len(prof_scores), 1) if prof_scores else 0.0
+                
+                # Determinar nivel principal del profesor
+                for subject in subjects:
+                    if subject.section_id:
+                        section_type = subject.section_id.type
+                        if section_type == 'pre':
+                            distribution['pre'] += 1
+                        elif section_type == 'primary':
+                            distribution['primary'] += 1
+                        elif section_type == 'secundary':
+                            distribution['secundary'] += 1
+                    elif subject.mention_section_id:
+                        distribution['tecnico'] += 1
+                
+                professors_ranking.append({
+                    'professor_id': prof.professor_id.id,
+                    'professor_name': prof.professor_id.name,
+                    'average': prof_average,
+                    'evaluations_count': evaluations_count,
+                    'subjects_count': subjects_count,
+                    'sections_count': len(prof.section_ids)
+                })
+            
+            # Ordenar por promedio (descendente) y tomar top 5
+            professors_ranking.sort(key=lambda x: (x['average'], x['evaluations_count']), reverse=True)
+            top_5_professors = professors_ranking[:5]
+            
+            # Promedio general
+            general_average = round(sum(all_scores) / len(all_scores), 1) if all_scores else 0.0
+            
+            # Contar profesores únicos por nivel
+            # Pre/Primary: profesores asignados directamente a secciones (via section_ids)
+            # Secundary/Tecnico: profesores asignados via materias (via school.subject)
+            unique_distribution = {
+                'pre': len([p for p in professors if any(
+                    section.type == 'pre' for section in p.section_ids
+                )]),
+                'primary': len([p for p in professors if any(
+                    section.type == 'primary' for section in p.section_ids
+                )]),
+                'secundary': len(set(p.id for p in professors if any(
+                    s.section_id.type == 'secundary' for s in self.env['school.subject'].search([
+                        ('professor_id', '=', p.id), ('year_id', '=', record.id), ('section_id', '!=', False)
+                    ])
+                ))),
+                'tecnico': len(set(p.id for p in professors if self.env['school.subject'].search_count([
+                    ('professor_id', '=', p.id), ('year_id', '=', record.id), ('mention_section_id', '!=', False)
+                ]) > 0))
+            }
+            
+            record.professor_dashboard_json = {
+                'total_professors': total_professors,
+                'total_subjects': total_subjects,
+                'total_evaluations': total_evaluations,
+                'general_average': general_average,
+                'top_professors': top_5_professors,
+                'distribution_by_level': unique_distribution,
+                'all_professors': professors_ranking
             }
     
     @api.depends('section_ids', 'section_ids.subjects_average_json')
@@ -637,7 +1401,7 @@ class SchoolYear(models.Model):
     def _compute_level_performance_json(self):
         """Performance específico por nivel para los widgets de cada tab"""
         for year in self:
-            # Media General
+            # Media General (secundary sin mención)
             secundary_sections = year.section_ids.filtered(lambda s: s.type == 'secundary')
             year.secundary_performance_json = year._get_level_performance('secundary', secundary_sections)
             
@@ -648,6 +1412,9 @@ class SchoolYear(models.Model):
             # Preescolar
             pre_sections = year.section_ids.filtered(lambda s: s.type == 'pre')
             year.pre_performance_json = year._get_level_performance('pre', pre_sections)
+            
+            # Técnico Medio (usa datos de menciones)
+            year.tecnico_performance_json = year._get_tecnico_performance()
             
     def _get_level_performance(self, level_type, sections):
         """Agrega los datos de rendimiento específico del nivel para general_performance_graph"""
@@ -660,110 +1427,216 @@ class SchoolYear(models.Model):
             evaluation_config = self.evalution_type_pree
 
         evaluation_type = evaluation_config.type_evaluation if evaluation_config else '20'
+        is_primary = level_type == 'primary'
 
         # Filtrar estudiantes activos del nivel
-        students = self.student_ids.filtered(
-            lambda s: s.current and s.state == 'done' and s.type == level_type
-        )
+        # FIX: Para Media General (secundary), excluir estudiantes con mención inscrita
+        if level_type == 'secundary':
+            students = self.student_ids.filtered(
+                lambda s: s.current and s.state == 'done' and s.type == level_type and s.mention_state != 'enrolled'
+            )
+        else:
+            students = self.student_ids.filtered(
+                lambda s: s.current and s.state == 'done' and s.type == level_type
+            )
+        
+        # For Primaria with students but no grades, return default approved data
         if not students:
             return {}
+        
+        # FIX: Para Primaria, calcular por ESTUDIANTES (no por notas individuales)
+        # Cada estudiante tiene un promedio literal basado en sus notas
+        if is_primary:
+            literal_weights_map = {'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1}
+            literal_distribution = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
+            
+            students_approved = 0
+            students_failed = 0
+            total_weight_sum = 0.0
+            students_with_grades = 0
+            
+            for student in students:
+                # Obtener todas las notas literales del estudiante
+                student_literals = [
+                    s.literal_type for s in student.evaluation_score_ids 
+                    if s.literal_type and not s.evaluation_id.invisible_literal
+                ]
+                
+                if student_literals:
+                    # Calcular promedio literal del estudiante
+                    avg_weight = sum(literal_weights_map.get(lit, 0) for lit in student_literals) / len(student_literals)
+                    total_weight_sum += avg_weight
+                    students_with_grades += 1
+                    
+                    # Determinar literal promedio del estudiante
+                    if avg_weight >= 4.5:
+                        student_literal = 'A'
+                    elif avg_weight >= 3.5:
+                        student_literal = 'B'
+                    elif avg_weight >= 2.5:
+                        student_literal = 'C'
+                    elif avg_weight >= 1.5:
+                        student_literal = 'D'
+                    else:
+                        student_literal = 'E'
+                    
+                    # Incrementar distribución
+                    literal_distribution[student_literal] += 1
+                    
+                    # Contar aprobado/reprobado (A, B, C = aprobado)
+                    if student_literal in ['A', 'B', 'C']:
+                        students_approved += 1
+                    else:
+                        students_failed += 1
+            
+            # Calcular promedio general del nivel
+            if students_with_grades > 0:
+                overall_avg_weight = total_weight_sum / students_with_grades
+                if overall_avg_weight >= 4.5:
+                    literal_avg = 'A'
+                elif overall_avg_weight >= 3.5:
+                    literal_avg = 'B'
+                elif overall_avg_weight >= 2.5:
+                    literal_avg = 'C'
+                elif overall_avg_weight >= 1.5:
+                    literal_avg = 'D'
+                else:
+                    literal_avg = 'E'
+            else:
+                overall_avg_weight = 0
+                literal_avg = None
+            
+            total_students = len(students)
+            approval_pct = round((students_approved / total_students) * 100, 2) if total_students > 0 else 0.0
+            
+            return {
+                'evaluation_type': 'literal',
+                'section_type': level_type,
+                'total_subjects': total_students,  # Total de ESTUDIANTES
+                'subjects_approved': students_approved,
+                'subjects_failed': students_failed,
+                'general_average': round(overall_avg_weight * 4, 1),  # Escala aproximada 20
+                'general_state': 'approve' if literal_avg in ['A', 'B', 'C'] else 'failed',
+                'use_literal': True,
+                'literal_average': literal_avg,
+                'approval_percentage': approval_pct,
+                'literal_distribution': literal_distribution
+            }
 
-        total_subjects = 0
-        subjects_approved = 0
-        subjects_failed = 0
-
-        # Para promedio numérico ponderado
-        weighted_sum_avg = 0.0
-        weighted_count_for_avg = 0
-
-        # Para promedio literal ponderado (si hay literales)
-        use_literal = False
-        literal_weights_sum = 0.0
-        literal_weighted_count = 0
-
-        literal_weights_map = {'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1}
+        # FIX: Media General ahora cuenta por ESTUDIANTES (no por materias)
+        # Para que coincida con las cards del Dashboard General
+        total_students = len(students)
+        students_approved = 0
+        students_failed = 0
+        
+        # Para promedio numérico 
+        total_avg = 0.0
+        count_with_avg = 0
 
         for student in students:
             perf = student.general_performance_json
             if not isinstance(perf, dict):
                 perf = {}
-            s_total = int(perf.get('total_subjects', 0))
-            s_approved = int(perf.get('subjects_approved', 0))
-            s_failed = int(perf.get('subjects_failed', 0))
-
-            total_subjects += s_total
-            subjects_approved += s_approved
-            subjects_failed += s_failed
-
-            # Numérico: acumular promedio ponderado por número de materias del alumno
-            if not perf.get('use_literal') and perf.get('general_average') is not None and s_total > 0:
+            
+            # Contar estudiante como aprobado/reprobado
+            if perf.get('general_state') == 'approve':
+                students_approved += 1
+            else:
+                students_failed += 1
+            
+            # Sumar promedio del estudiante
+            if perf.get('general_average') is not None:
                 try:
                     avg_val = float(perf.get('general_average', 0.0))
-                    weighted_sum_avg += avg_val * s_total
-                    weighted_count_for_avg += s_total
+                    if avg_val > 0:
+                        total_avg += avg_val
+                        count_with_avg += 1
                 except (ValueError, TypeError):
                     pass
 
-            # Literal: marcar y acumular usando el número de materias como peso si existe literal
-            if perf.get('use_literal') and perf.get('literal_average'):
-                use_literal = True
-                lit = perf.get('literal_average')
-                if lit in literal_weights_map:
-                    weight = literal_weights_map.get(lit, 0)
-                    # usar s_total como factor de ponderación si hay información de materias
-                    factor = s_total if s_total > 0 else 1
-                    literal_weights_sum += weight * factor
-                    literal_weighted_count += factor
-
+        # Calcular promedio general del nivel
+        avg = round(total_avg / count_with_avg, 2) if count_with_avg > 0 else 0.0
+        min_score = 10 if evaluation_type == '20' else 50
+        
         result = {
             'evaluation_type': evaluation_type,
             'section_type': level_type,
-            'total_subjects': total_subjects,
-            'subjects_approved': subjects_approved,
-            'subjects_failed': subjects_failed,
-            'general_average': 0.0,
-            'general_state': 'failed',
-            'use_literal': use_literal,
+            'total_subjects': total_students,  # Total de ESTUDIANTES
+            'subjects_approved': students_approved,
+            'subjects_failed': students_failed,
+            'general_average': avg,
+            'general_state': 'approve' if avg >= min_score else 'failed',
+            'use_literal': False,
             'literal_average': None,
-            'approval_percentage': 0.0,
+            'approval_percentage': round((students_approved / total_students) * 100, 2) if total_students > 0 else 0.0,
         }
-
-        # Calcular promedio y estado según tipo de representación
-        if use_literal and literal_weighted_count > 0:
-            avg_weight = literal_weights_sum / literal_weighted_count
-            # Convertir peso promedio a literal (mismo mapeo que en cálculo por estudiante)
-            if avg_weight >= 4.5:
-                literal_avg = 'A'
-            elif avg_weight >= 3.5:
-                literal_avg = 'B'
-            elif avg_weight >= 2.5:
-                literal_avg = 'C'
-            elif avg_weight >= 1.5:
-                literal_avg = 'D'
-            else:
-                literal_avg = 'E'
-            result['literal_average'] = literal_avg
-            result['use_literal'] = True
-            result['general_state'] = 'approve' if literal_avg in ['A', 'B', 'C'] else 'failed'
-        else:
-            # Promedio numérico ponderado por cantidad de materias reportadas por estudiante
-            if weighted_count_for_avg > 0:
-                avg = round(weighted_sum_avg / weighted_count_for_avg, 2)
-                result['general_average'] = avg
-                # Determinar umbral mínimo según tipo de evaluación
-                min_score = 10 if evaluation_type == '20' else 50
-                # Estado: aprobado si promedio >= min_score y no hay materias reprobadas
-                result['general_state'] = 'approve' if (avg >= min_score and subjects_failed == 0) else 'failed'
-            else:
-                result['general_average'] = 0.0
-                result['general_state'] = 'failed'
-
         # Porcentaje de aprobación
-        if total_subjects > 0:
-            result['approval_percentage'] = round((subjects_approved / total_subjects) * 100, 2)
+        if total_students > 0:
+            result['approval_percentage'] = round((students_approved / total_students) * 100, 2)
         else:
             result['approval_percentage'] = 0.0
 
+        return result
+    
+    def _get_tecnico_performance(self):
+        """Calcula rendimiento específico para Técnico Medio usando datos de menciones
+        FIX: Ahora cuenta por ESTUDIANTES en lugar de por materias
+        """
+        # Estudiantes de técnico medio (con mención inscrita)
+        students = self.student_ids.filtered(
+            lambda s: s.current and s.state == 'done' and 
+                      s.type == 'secundary' and s.mention_state == 'enrolled'
+        )
+        
+        if not students:
+            return {}
+        
+        # Configuración de evaluación (usamos secundary)
+        evaluation_config = self.evalution_type_secundary
+        evaluation_type = evaluation_config.type_evaluation if evaluation_config else '20'
+        min_score = 10 if evaluation_type == '20' else 50
+        
+        # FIX: Contar por ESTUDIANTES, no por materias
+        total_students = len(students)
+        students_approved = 0
+        students_failed = 0
+        total_avg = 0.0
+        count_with_avg = 0
+        
+        for student in students:
+            mention_data = student.mention_scores_json
+            if not isinstance(mention_data, dict) or not mention_data.get('subjects'):
+                students_failed += 1
+                continue
+            
+            # Usar el estado general del estudiante en la mención
+            if mention_data.get('general_state') == 'approve':
+                students_approved += 1
+            else:
+                students_failed += 1
+            
+            # Usar el promedio general del estudiante
+            avg = mention_data.get('general_average', 0.0)
+            if avg and avg > 0:
+                total_avg += avg
+                count_with_avg += 1
+        
+        # Calcular promedio general del nivel
+        avg = round(total_avg / count_with_avg, 2) if count_with_avg > 0 else 0.0
+        
+        result = {
+            'evaluation_type': evaluation_type,
+            'section_type': 'tecnico',
+            'total_subjects': total_students,  # Total de ESTUDIANTES
+            'subjects_approved': students_approved,
+            'subjects_failed': students_failed,
+            'general_average': avg,
+            'general_state': 'approve' if avg >= min_score else 'failed',
+            'use_literal': False,
+            'literal_average': None,
+            'approval_percentage': round((students_approved / total_students) * 100, 2) if total_students > 0 else 0.0,
+        }
+        
         return result
     
     @api.depends('student_ids', 'student_ids.general_performance_json', 'student_ids.evaluation_score_ids',
@@ -811,21 +1684,55 @@ class SchoolYear(models.Model):
             evaluation_config = self.evalution_type_pree
         
         evaluation_type = evaluation_config.type_evaluation if evaluation_config else '20'
-        use_literal = evaluation_type == 'literal'
+        use_literal = evaluation_type == 'literal' or level_type == 'primary'  # Primaria always uses literal
         
-        # Helper function to safely get performance state
-        def get_perf_state(student):
+        # FIX: Helper function to safely get performance state
+        # Para Técnico Medio usamos mention_scores_json para obtener el estado correcto de aprobación
+        # Para Primaria calculamos directamente desde evaluation_score_ids usando literal_type
+        def get_perf_state(student, is_primary=False):
+            # Para Técnico Medio, usar mention_scores_json si está disponible
+            if level_type == 'secundary_tecnico':
+                mention_perf = student.mention_scores_json
+                if isinstance(mention_perf, dict) and mention_perf:
+                    return mention_perf.get('general_state', 'failed')
+            
+            # FIX: Para Primaria, calcular directamente desde literal_type
+            # porque general_performance_json está vacío (evaluaciones sin subject_id)
+            if level_type == 'primary':
+                literals = [
+                    s.literal_type for s in student.evaluation_score_ids 
+                    if s.literal_type and not s.evaluation_id.invisible_literal
+                ]
+                if literals:
+                    # Calcular promedio y determinar estado
+                    literal_weights = {'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1}
+                    avg_weight = sum(literal_weights.get(lit, 0) for lit in literals) / len(literals)
+                    if avg_weight >= 2.5:  # C o mejor = aprobado
+                        return 'approve'
+                    return 'failed'
+                return 'failed'  # Sin notas = reprobado
+            
+            # Para otros niveles, usar general_performance_json
             perf = student.general_performance_json
-            if isinstance(perf, dict):
-                return perf.get('general_state')
+            if isinstance(perf, dict) and perf:
+                return perf.get('general_state', 'failed')
+            # Sin datos de performance, marcar como reprobado para evitar falsos positivos
             return 'failed'
         
-        # Calculate approval stats
-        approved_count = sum(
-            1 for s in students 
-            if get_perf_state(s) == 'approve'
-        )
-        failed_count = len(students) - approved_count
+        # Calculate approval stats - Preescolar uses observations, all are approved
+        is_primary = level_type == 'primary'
+        is_pre = level_type == 'pre'
+        
+        if is_pre:
+            # Preescolar: All students are approved by observation (no grades)
+            approved_count = len(students)
+            failed_count = 0
+        else:
+            approved_count = sum(
+                1 for s in students 
+                if get_perf_state(s, is_primary) == 'approve'
+            )
+            failed_count = len(students) - approved_count
         approval_rate = round((approved_count / len(students)) * 100, 2) if students else 0
         
         # Build performance data (by evaluation for pre/primary, by subject for media/tecnico)
@@ -834,14 +1741,26 @@ class SchoolYear(models.Model):
         else:
             performance_data = self._build_performance_by_subject(students, evaluation_type, level_type == 'secundary_tecnico')
         
-        # Build top 3 students per section
-        top_students_by_section = self._build_top_students_by_section(students, evaluation_type, use_literal)
+        # Build top 3 students per section (or by mention for tecnico)
+        # Skip for preescolar - no grades
+        if level_type == 'pre':
+            top_students_by_section = []  # No top students for preescolar
+            sections_count = len(self.sections_pre_ids_m2m)
+        elif level_type == 'secundary_tecnico':
+            top_students_by_section = self._build_top_students_by_mention(students, evaluation_type, use_literal)
+            # Use mentions_count field for accurate count of active mention sections
+            sections_count = self.mentions_count
+        else:
+            top_students_by_section = self._build_top_students_by_section(students, evaluation_type, use_literal, level_type)
+            sections_count = len(top_students_by_section)
         
         return {
+            'level_type': level_type,
             'total_students': len(students),
             'approved_count': approved_count,
             'failed_count': failed_count,
             'approval_rate': approval_rate,
+            'sections_count': sections_count,
             'performance_data': performance_data,
             'top_students_by_section': top_students_by_section,
             'evaluation_type': evaluation_type,
@@ -875,9 +1794,9 @@ class SchoolYear(models.Model):
                     if score.literal_type in ['A', 'B', 'C']:
                         evaluations_data[eval_id]['approved_count'] += 1
                 else:
-                    score_value = score.points_20 if evaluation_type == '20' else score.points_100
+                    score_value = score.points_20
                     evaluations_data[eval_id]['scores'].append(score_value)
-                    min_score = 10 if evaluation_type == '20' else 50
+                    min_score = 10  # Always base 20
                     if score_value >= min_score:
                         evaluations_data[eval_id]['approved_count'] += 1
         
@@ -936,9 +1855,9 @@ class SchoolYear(models.Model):
                     if score.literal_type in ['A', 'B', 'C']:
                         subjects_data[subject_id]['approved_count'] += 1
                 else:
-                    score_value = score.points_20 if evaluation_type == '20' else score.points_100
+                    score_value = score.points_20
                     subjects_data[subject_id]['scores'].append(score_value)
-                    min_score = 10 if evaluation_type == '20' else 50
+                    min_score = 10  # Always base 20
                     if score_value >= min_score:
                         subjects_data[subject_id]['approved_count'] += 1
         
@@ -962,13 +1881,14 @@ class SchoolYear(models.Model):
         result.sort(key=lambda x: x['subject_name'])
         return result
     
-    def _build_top_students_by_section(self, students, evaluation_type, use_literal):
+    def _build_top_students_by_section(self, students, evaluation_type, use_literal, level_type=''):
         """Build top 3 students per section"""
         sections_data = {}
+        is_primary = level_type == 'primary'
         
         for student in students:
             section_id = student.section_id.id
-            section_name = student.section_id.section_id.name if student.section_id.section_id else student.section_id.name
+            section_name = student.section_id.section_id.display_name if student.section_id.section_id else student.section_id.name
             
             if section_id not in sections_data:
                 sections_data[section_id] = {
@@ -979,11 +1899,39 @@ class SchoolYear(models.Model):
             
             # Handle False or non-dict values for general_performance_json
             perf = student.general_performance_json
-            if not isinstance(perf, dict):
+            if not isinstance(perf, dict) or not perf:
                 perf = {}
             
-            if use_literal:
-                literal = perf.get('literal_average', 'E')
+            if use_literal or is_primary:
+                # FIX: Para Primaria, calcular literal directamente desde evaluation_score_ids
+                # porque general_performance_json está vacío (evaluaciones sin subject_id)
+                if is_primary:
+                    literals = [
+                        s.literal_type for s in student.evaluation_score_ids 
+                        if s.literal_type and not s.evaluation_id.invisible_literal
+                    ]
+                    if literals:
+                        literal_weights = {'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1}
+                        avg_weight = sum(literal_weights.get(lit, 0) for lit in literals) / len(literals)
+                        # Convertir peso promedio a literal
+                        if avg_weight >= 4.5:
+                            literal = 'A'
+                        elif avg_weight >= 3.5:
+                            literal = 'B'
+                        elif avg_weight >= 2.5:
+                            literal = 'C'
+                        elif avg_weight >= 1.5:
+                            literal = 'D'
+                        else:
+                            literal = 'E'
+                        state = 'approve' if literal in ['A', 'B', 'C'] else 'failed'
+                    else:
+                        literal = 'E'
+                        state = 'failed'
+                else:
+                    literal = perf.get('literal_average', 'E')
+                    state = perf.get('general_state', 'failed')
+                
                 literal_weights = {'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1}
                 sort_value = literal_weights.get(literal, 0)
                 display_value = literal
@@ -991,15 +1939,17 @@ class SchoolYear(models.Model):
                 sort_value = perf.get('general_average', 0)
                 suffix = '/20' if evaluation_type == '20' else '/100'
                 display_value = f"{sort_value}{suffix}"
+                state = perf.get('general_state', 'failed')
             
             sections_data[section_id]['students'].append({
                 'student_id': student.student_id.id,
                 'student_name': student.student_id.name,
                 'enrollment_id': student.id,
                 'average': display_value,
+                'literal_average': display_value if (use_literal or is_primary) else None,
                 'sort_value': sort_value,
-                'state': perf.get('general_state', 'failed'),
-                'use_literal': use_literal
+                'state': state,
+                'use_literal': use_literal or is_primary
             })
         
         # Sort students and take top 3 per section
@@ -1012,6 +1962,67 @@ class SchoolYear(models.Model):
         
         # Sort sections by name
         result.sort(key=lambda x: x['section_name'])
+        return result
+    
+    def _build_top_students_by_mention(self, students, evaluation_type, use_literal):
+        """Build top 3 students per mention (for Técnico Medio)"""
+        mentions_data = {}
+        
+        for student in students:
+            # Get mention info
+            mention = student.mention_id
+            if not mention:
+                continue
+            
+            mention_id = mention.id
+            mention_name = mention.name
+            
+            if mention_id not in mentions_data:
+                mentions_data[mention_id] = {
+                    'section_id': mention_id,  # Use section_id key for compatibility with widget
+                    'section_name': mention_name,  # Use section_name key for compatibility
+                    'mention_id': mention_id,
+                    'mention_name': mention_name,
+                    'students': []
+                }
+            
+            # Get performance from mention_scores_json for Técnico Medio
+            perf = student.mention_scores_json
+            if not isinstance(perf, dict):
+                perf = student.general_performance_json
+                if not isinstance(perf, dict):
+                    perf = {}
+            
+            if use_literal:
+                literal = perf.get('literal_average', 'E')
+                literal_weights = {'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1}
+                sort_value = literal_weights.get(literal, 0)
+                display_value = literal
+            else:
+                sort_value = perf.get('general_average', 0)
+                suffix = '/20' if evaluation_type == '20' else '/100'
+                display_value = f"{sort_value}{suffix}"
+            
+            mentions_data[mention_id]['students'].append({
+                'student_id': student.student_id.id,
+                'student_name': student.student_id.name,
+                'enrollment_id': student.id,
+                'average': display_value,
+                'sort_value': sort_value,
+                'state': perf.get('general_state', 'failed'),
+                'use_literal': use_literal
+            })
+        
+        # Sort students and take top 3 per mention
+        result = []
+        for mention_id, data in mentions_data.items():
+            data['students'].sort(key=lambda x: x['sort_value'], reverse=True)
+            data['top_3'] = data['students'][:3]
+            del data['students']  # Remove full list, keep only top 3
+            result.append(data)
+        
+        # Sort mentions by name
+        result.sort(key=lambda x: x['mention_name'])
         return result
     
     @api.depends('student_ids', 'student_ids.evaluation_score_ids', 'section_ids')
@@ -1067,10 +2078,8 @@ class SchoolYear(models.Model):
                         if eval_type == 'literal':
                             literal_weights = {'A': 18, 'B': 15, 'C': 12, 'D': 8, 'E': 4}
                             score_value = literal_weights.get(score.literal_type, 0)
-                        elif eval_type == '20':
-                            score_value = score.points_20
                         else:
-                            score_value = score.points_100
+                            score_value = score.points_20
                         
                         stats_by_type[category]['scores'].append(score_value)
                         stats_by_type[category]['count'] += 1

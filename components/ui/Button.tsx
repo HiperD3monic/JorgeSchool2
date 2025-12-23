@@ -157,7 +157,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    // No elevation by default for flat style
   },
   buttonPrimary: {
     backgroundColor: Colors.primary,
@@ -166,7 +165,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2, // Soft colored shadow
     shadowRadius: 8,
-    elevation: 0, // No Android elevation
   },
   buttonSecondary: {
     backgroundColor: Colors.secondary,

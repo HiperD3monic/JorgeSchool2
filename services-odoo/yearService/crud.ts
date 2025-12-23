@@ -334,3 +334,59 @@ export const finishSchoolYear = async (id: number): Promise<SchoolYearServiceRes
         };
     }
 };
+
+/**
+ * Avanza al siguiente lapso del año escolar (1 -> 2 -> 3)
+ */
+export const nextLapso = async (id: number): Promise<SchoolYearServiceResult<SchoolYear>> => {
+    try {
+        if (__DEV__) {
+            console.time(`⏱️ nextLapso:${id}`);
+        }
+
+        // Llamar al método action_next_lapso en Odoo
+        const callResult = await odooApi.callMethod(MODELS.YEAR, 'action_next_lapso', [[id]]);
+
+        if (!callResult.success) {
+            if (callResult.error?.isSessionExpired) {
+                return { success: false, message: 'Tu sesión ha expirado' };
+            }
+            return {
+                success: false,
+                message: odooApi.extractOdooErrorMessage(callResult.error),
+            };
+        }
+
+        // Leer datos actualizados
+        const readResult = await odooApi.read(MODELS.YEAR, [id], YEAR_FIELDS);
+
+        if (!readResult.success || !readResult.data) {
+            return { success: false, message: 'Error al leer el año actualizado' };
+        }
+
+        const updatedYear = normalizeSchoolYear(readResult.data[0]);
+
+        // Invalidar caché
+        invalidateYearsCache();
+
+        if (__DEV__) {
+            console.timeEnd(`⏱️ nextLapso:${id}`);
+            console.log('✅ Avanzado al siguiente lapso');
+        }
+
+        return {
+            success: true,
+            data: updatedYear,
+            schoolYear: updatedYear,
+            message: 'Avanzado al siguiente lapso exitosamente',
+        };
+    } catch (error: any) {
+        if (__DEV__) {
+            console.error('❌ Error en nextLapso:', error);
+        }
+        return {
+            success: false,
+            message: odooApi.extractOdooErrorMessage(error),
+        };
+    }
+};

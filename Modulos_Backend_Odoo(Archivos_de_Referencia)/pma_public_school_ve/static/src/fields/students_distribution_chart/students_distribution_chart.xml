@@ -2,13 +2,41 @@
 <templates id="template" xml:space="preserve">
     <t t-name="school.StudentsDistributionChart">
         <div class="o_students_distribution_chart">
-            <div t-if="data and data.total > 0" class="o_chart_wrapper" style="position: relative; height: 300px;">
-                <canvas t-ref="canvas"/>
-            </div>
-            <div t-else="" class="alert alert-info text-center">
-                <i class="fa fa-info-circle me-2"/>
-                No hay estudiantes inscritos
-            </div>
+            <t t-if="hasData">
+                <div class="row align-items-center">
+                    <!-- Chart Column -->
+                    <div class="col-md-5 col-12 d-flex justify-content-center">
+                        <div class="position-relative" style="width: 160px; height: 160px;">
+                            <canvas t-ref="canvas"/>
+                            <!-- Centered Total -->
+                            <div class="position-absolute" style="top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+                                <span class="d-block fw-bold fs-4"><t t-esc="totalStudents"/></span>
+                                <small class="text-muted">Total</small>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Legend Column -->
+                    <div class="col-md-7 col-12 mt-3 mt-md-0">
+                        <div class="d-flex flex-column gap-2">
+                            <t t-foreach="chartData" t-as="item" t-key="item.label">
+                                <div class="d-flex align-items-center p-2 rounded" 
+                                     t-on-click="() => this.onLevelClick(item.level)" 
+                                     t-att-style="'cursor: pointer; background-color: ' + item.color + '22; border-left: 4px solid ' + item.color">
+                                    <i t-attf-class="fa {{ item.icon }} me-2" t-att-style="'color: ' + item.color"/>
+                                    <span class="flex-grow-1 small fw-medium"><t t-esc="item.label"/></span>
+                                    <span class="fw-bold small me-2"><t t-esc="item.value"/></span>
+                                    <span class="text-muted small">(<t t-esc="item.percentage"/>%)</span>
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+                </div>
+            </t>
+            <t t-else="">
+                <div class="alert alert-info text-center">
+                    <i class="fa fa-info-circle me-2"/>No hay estudiantes.
+                </div>
+            </t>
         </div>
     </t>
 </templates>

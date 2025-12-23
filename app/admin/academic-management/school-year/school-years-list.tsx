@@ -8,17 +8,14 @@ import { Animated, Platform, RefreshControl, ScrollView, StyleSheet, Text, Touch
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EmptyState, Pagination, PaginationSkeleton, SearchBar } from '../../../../components/list';
 import {
-    EditSchoolYearModal,
     SchoolYearCard,
     SchoolYearCardSkeleton,
     SchoolYearSearchBarSkeleton,
-    ViewSchoolYearModal,
 } from '../../../../components/school-year';
 import { showAlert } from '../../../../components/showAlert';
 import Colors from '../../../../constants/Colors';
 import { useSchoolYears } from '../../../../hooks';
 import type { SchoolYear } from '../../../../services-odoo/yearService';
-import { finishSchoolYear, startSchoolYear } from '../../../../services-odoo/yearService';
 
 export default function SchoolYearsListScreen() {
     const {
@@ -38,13 +35,6 @@ export default function SchoolYearsListScreen() {
         goToPage,
         onRefresh,
     } = useSchoolYears();
-
-    // Estados para modales
-    const [selectedYear, setSelectedYear] = useState<SchoolYear | null>(null);
-    const [showViewModal, setShowViewModal] = useState(false);
-    const [showEditModal, setShowEditModal] = useState(false);
-    const [isStartingYear, setIsStartingYear] = useState(false);
-    const [isFinishingYear, setIsFinishingYear] = useState(false);
 
     // Estados para crossfade
     const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -70,67 +60,12 @@ export default function SchoolYearsListScreen() {
     }, [initialLoading, showSkeleton, fadeAnim]);
 
     const handleViewYear = (year: SchoolYear) => {
-        setSelectedYear(year);
-        setShowViewModal(true);
-    };
-
-    const handleEditYear = () => {
         if (isOfflineMode) {
-            showAlert('Sin conexión', 'No puedes editar años escolares sin conexión a internet.');
+            showAlert('Sin conexión', 'No puedes ver detalles del año escolar sin conexión a internet.');
             return;
         }
-        setShowViewModal(false);
-        setTimeout(() => {
-            setShowEditModal(true);
-        }, 200);
-    };
-
-    const handleSaveSuccess = () => {
-        setShowEditModal(false);
-        setSelectedYear(null);
-        onRefresh();
-    };
-
-    const handleStartYear = async () => {
-        if (!selectedYear) return;
-
-        setIsStartingYear(true);
-        try {
-            const result = await startSchoolYear(selectedYear.id);
-            if (result.success) {
-                showAlert('Éxito', 'Año escolar iniciado correctamente');
-                setShowViewModal(false);
-                setSelectedYear(null);
-                onRefresh();
-            } else {
-                showAlert('Error', result.message || 'No se pudo iniciar el año escolar');
-            }
-        } catch (error: any) {
-            showAlert('Error', error.message || 'Ocurrió un error al iniciar el año');
-        } finally {
-            setIsStartingYear(false);
-        }
-    };
-
-    const handleFinishYear = async () => {
-        if (!selectedYear) return;
-
-        setIsFinishingYear(true);
-        try {
-            const result = await finishSchoolYear(selectedYear.id);
-            if (result.success) {
-                showAlert('Éxito', 'Año escolar finalizado correctamente');
-                setShowViewModal(false);
-                setSelectedYear(null);
-                onRefresh();
-            } else {
-                showAlert('Error', result.message || 'No se pudo finalizar el año escolar');
-            }
-        } catch (error: any) {
-            showAlert('Error', error.message || 'Ocurrió un error al finalizar el año');
-        } finally {
-            setIsFinishingYear(false);
-        }
+        // Navigate to the dedicated school year dashboard page
+        router.push(`/admin/academic-management/school-year/${year.id}` as any);
     };
 
     return (
@@ -292,25 +227,6 @@ export default function SchoolYearsListScreen() {
                             </Animated.View>
                         )}
                     </View>
-
-                    {/* Modales */}
-                    <ViewSchoolYearModal
-                        visible={showViewModal}
-                        year={selectedYear}
-                        onClose={() => setShowViewModal(false)}
-                        onEdit={handleEditYear}
-                        onStartYear={handleStartYear}
-                        onFinishYear={handleFinishYear}
-                        isStartingYear={isStartingYear}
-                        isFinishingYear={isFinishingYear}
-                    />
-
-                    <EditSchoolYearModal
-                        visible={showEditModal}
-                        year={selectedYear}
-                        onClose={() => setShowEditModal(false)}
-                        onSave={handleSaveSuccess}
-                    />
                 </View>
             </SafeAreaProvider>
         </>

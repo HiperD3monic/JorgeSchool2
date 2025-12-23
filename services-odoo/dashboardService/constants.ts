@@ -24,6 +24,8 @@ export const SCHOOL_YEAR_BASE_FIELDS = [
     'start_date_real',
     'end_date_real',
     'is_locked',
+    'current_lapso',
+    'lapso_display',
 ] as const;
 
 /**

@@ -80,11 +80,17 @@
                             confirm="¿Está seguro de iniciar este año escolar? Esta acción marcará el año como activo."
                             invisible="state != 'draft'"
                             class="btn-success"/>
+                    <button string="Siguiente Lapso" 
+                            name="action_next_lapso" 
+                            type="object"
+                            confirm="¿Está seguro de avanzar al siguiente lapso?"
+                            invisible="state != 'active' or current_lapso == '3'"
+                            class="btn-primary"/>
                     <button string="Finalizar Año Escolar" 
                             name="action_finish_year" 
                             type="object"
                             confirm="¿Está seguro de finalizar este año escolar? Esta acción bloqueará todas las inscripciones, evaluaciones y demás registros. No se podrán crear ni eliminar registros relacionados."
-                            invisible="state != 'active'"
+                            invisible="state != 'active' or current_lapso != '3'"
                             class="btn-danger"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,active,finished"/>
                 </header>
@@ -108,88 +114,42 @@
                     </div>
                     <widget name="web_ribbon" title="Finalizado" bg_color="text-bg-success" invisible="state != 'finished'"/>
                     <widget name="web_ribbon" title="En Curso" bg_color="text-bg-primary" invisible="state != 'active'"/>
-                    <div class="mb8">
-                        <div class="d-flex gap-3">
-                            <div class="d-flex flex-column flex-grow-1">
-                                <h1 class="mb-0 w-md-75">
+                    
+                    <!-- Enhanced Year Header -->
+                    <div class="o_year_header mb-3">
+                        <div class="row align-items-center">
+                            <!-- Year Name & Info (left) -->
+                            <div class="col-md-5">
+                                <h1 class="mb-0 display-5 fw-bold text-primary">
                                     <field options="{'line_breaks': False}" 
                                            widget="text" 
-                                           class="text-break d-block" 
+                                           class="text-break" 
                                            name="name" 
                                            default_focus="1" 
                                            placeholder="e.g. 2025-2026"
                                            readonly="state == 'finished'"/>
                                 </h1>
-                                <div class="o_row mt-2" invisible="state == 'finished'">
-                                    <field name="current" widget="boolean_toggle" readonly="state == 'finished'"/>
-                                    <label for="current" string="Año Actual"/>
+                                <div class="d-flex align-items-center gap-4 mt-2 flex-wrap">
+                                    <div class="d-flex align-items-center gap-2" invisible="state == 'finished'">
+                                        <field name="current" widget="boolean_toggle" readonly="state == 'finished'"/>
+                                        <small class="text-muted">Año Activo</small>
+                                    </div>
+                                    <div invisible="state == 'draft' or not start_date_real">
+                                        <i class="fa fa-calendar-check-o text-success me-1"/>
+                                        <small class="text-muted">Inicio: </small>
+                                        <field name="start_date_real" nolabel="1" class="fw-semibold"/>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <!-- Fechas de inicio/fin reales -->
-                        <div class="row mt-3" invisible="state == 'draft'">
-                            <div class="col-md-6">
-                                <label for="start_date_real" invisible="not start_date_real"/>
-                                <field name="start_date_real" nolabel="1" invisible="not start_date_real"/>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="end_date_real" invisible="not end_date_real"/>
-                                <field name="end_date_real" nolabel="1" invisible="not end_date_real"/>
-                            </div>
-                        </div>
-                        <field name="is_locked" invisible="1"/>
-                    </div>
-
-                    <!-- KPIs PRINCIPALES EN CARDS -->
-                    <div class="row mb-4">
-                        <div class="col-lg-3 col-md-6 mb-3">
-                            <div class="card border-primary shadow-sm">
-                                <div class="card-body text-center">
-                                    <i class="fa fa-users fa-3x text-primary mb-2"/>
-                                    <h3 class="mb-0">
-                                        <field name="total_students_count"/>
-                                    </h3>
-                                    <p class="text-muted mb-0">Estudiantes Inscritos</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="col-lg-3 col-md-6 mb-3">
-                            <div class="card border-success shadow-sm">
-                                <div class="card-body text-center">
-                                    <i class="fa fa-check-circle fa-3x text-success mb-2"/>
-                                    <h3 class="mb-0">
-                                        <field name="approved_students_count"/>
-                                    </h3>
-                                    <p class="text-muted mb-0">Estudiantes Aprobados</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="col-lg-3 col-md-6 mb-3">
-                            <div class="card border-info shadow-sm">
-                                <div class="card-body text-center">
-                                    <i class="fa fa-chalkboard fa-3x text-info mb-2"/>
-                                    <h3 class="mb-0">
-                                        <field name="total_sections_count"/>
-                                    </h3>
-                                    <p class="text-muted mb-0">Secciones Activas</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="col-lg-3 col-md-6 mb-3">
-                            <div class="card border-warning shadow-sm">
-                                <div class="card-body text-center">
-                                    <i class="fa fa-user-tie fa-3x text-warning mb-2"/>
-                                    <h3 class="mb-0">
-                                        <field name="total_professors_count"/>
-                                    </h3>
-                                    <p class="text-muted mb-0">Profesores Activos</p>
-                                </div>
+                            
+                            <!-- Lapsos Timeline (center-right) -->
+                            <div class="col-md-7" invisible="state == 'draft'">
+                                <field name="current_lapso" widget="lapsos_timeline" nolabel="1"/>
                             </div>
                         </div>
                     </div>
+                    
+                    <field name="is_locked" invisible="1"/>
 
                     <!-- NOTEBOOK CONVERTIDO EN DASHBOARD -->
                     <notebook>
@@ -202,6 +162,22 @@
                                         nolabel="1" colspan="2"/>
                                 </group>
                             </group>
+
+                            <!-- New Row: Sections and Professors Distribution -->
+                            <group>
+                                <group string="Distribución de Secciones por Nivel">
+                                    <field name="sections_distribution_json" 
+                                           widget="sections_gauge_chart" 
+                                           nolabel="1" colspan="2"/>
+                                </group>
+                                
+                                <group string="Distribución de Profesores por Nivel">
+                                    <field name="professors_distribution_json" 
+                                           widget="professors_radar_chart" 
+                                           nolabel="1" colspan="2"/>
+                                </group>
+                            </group>
+
                             <group>
                                 <group string="Distribución de Estudiantes por Nivel">
                                     <field name="students_distribution_json" 
@@ -217,13 +193,13 @@
                             </group>
 
                             <group>
-                                <group string="Comparativa de Secciones" colspan="2">
+                                <group string="Mejor Sección por Nivel" colspan="2">
                                     <field name="sections_comparison_json" 
                                         widget="sections_comparison_chart" 
                                         nolabel="1" colspan="2"/>
                                 </group>
 
-                                <group string="Top 10 Mejores Estudiantes del Año" colspan="2">
+                                <group string="Top 9 Mejores Estudiantes (3 por Nivel)" colspan="2">
                                     <field name="top_students_year_json" 
                                         widget="top_students_list" 
                                         nolabel="1" colspan="2"/>
@@ -238,35 +214,16 @@
                                 <field name="evalution_type_secundary" options="{'no_create':True}"/>
                             </group>
 
-                            <group name="secundary" col="3">
-                                <group name="sections" string="Secciones">
-                                    <field name="students_secundary_count" nolabel="1" readonly="1"/>
-                                    <label for="students_secundary_count" string="Total Estudiantes"/>
-                                </group>
-                                <group name="students" string="Estudiantes">
-                                    <field name="approved_secundary_count" nolabel="1" readonly="1"/>
-                                    <label for="approved_secundary_count" string="Aprobados"/>
-                                </group>
-                                <group name="subjects" string="Materias">
-                                    <field name="sections_secundary_count" nolabel="1" readonly="1"/>
-                                    <label for="sections_secundary_count" string="Secciones Activas"/>
-                                </group>
-                            </group>
+                            <!-- KPI Cards + Progress Bar (replaces old counters) -->
+                            <separator string="Estadísticas de estudiantes"/>
+                            <field name="secundary_general_dashboard_json" 
+                                   widget="level_dashboard_kpi" 
+                                   nolabel="1"/>
 
-                            <separator string="Secciones de Media General"/>
-                            <field name="section_ids"
-                                    readonly="1" 
-                                   domain="[('type', '=', 'secundary')]"
-                                   >
-                                   <!-- context="{'default_year_id': active_id, 'default_type': 'secundary'}" -->
-                                <list decoration-info="type == 'secundary'">
-                                    <field name="section_id"/>
-                                    <field name="type" invisible="1"/>
-                                    <field name="student_ids" widget="badge" decoration-info="1"/>
-                                    <field name="subject_ids" widget="badge" decoration-success="1"/>
-                                    <field name="professor_ids" widget="many2many_tags"/>
-                                </list>
-                            </field>
+                            <separator string="Grados de Media General"/>
+                            <field name="sections_secundary_ids" 
+                                   widget="many2many_tags"
+                                   readonly="1"/>
 
                             <group string="Rendimiento de Media General">
                                 <field name="secundary_performance_json" 
@@ -275,10 +232,10 @@
                                        nolabel="1"/>
                             </group>
                             
-                            <!-- Dashboard con Top 3 estudiantes por sección -->
+                            <!-- Top 3 estudiantes por sección -->
                             <group string="Top 3 Estudiantes por Sección">
                                 <field name="secundary_general_dashboard_json" 
-                                       widget="level_dashboard" 
+                                       widget="level_dashboard_students" 
                                        colspan="2"
                                        nolabel="1"/>
                             </group>
@@ -291,44 +248,30 @@
                                 <field name="evalution_type_secundary" options="{'no_create':True}" readonly="1"/>
                             </group>
 
-                            <group name="secundary_tecnico" col="3">
-                                <group name="students" string="Estudiantes">
-                                    <field name="students_tecnico_count" nolabel="1" readonly="1"/>
-                                    <label for="students_tecnico_count" string="Total Estudiantes"/>
-                                </group>
-                                <group name="approved" string="Aprobados">
-                                    <field name="approved_tecnico_count" nolabel="1" readonly="1"/>
-                                    <label for="approved_tecnico_count" string="Aprobados"/>
-                                </group>
-                                <group name="sections" string="Secciones">
-                                    <field name="sections_secundary_count" nolabel="1" readonly="1"/>
-                                    <label for="sections_secundary_count" string="Secciones Activas"/>
-                                </group>
-                            </group>
+                            <!-- KPI Cards + Progress Bar (replaces old counters) -->
+                            <separator string="Estadísticas de estudiantes"/>
+                            <field name="secundary_tecnico_dashboard_json" 
+                                   widget="level_dashboard_kpi" 
+                                   nolabel="1"/>
 
-                            <separator string="Estudiantes con Mención Inscrita"/>
-                            <field name="students_secundary_tecnico_ids" 
-                                    readonly="1">
-                                <list decoration-info="mention_state == 'enrolled'">
-                                    <field name="student_id"/>
-                                    <field name="section_id"/>
-                                    <field name="mention_id"/>
-                                    <field name="mention_state" widget="badge" 
-                                           decoration-success="mention_state == 'enrolled'"/>
-                                </list>
-                            </field>
+                            <separator string="Menciones de Técnico Medio"/>
+                            <!-- FIX: Cambiado de many2many_tags (usaba display_name con año) a 
+                                 mentions_tags_widget que muestra solo nombre de mención sin año y sin truncamiento -->
+                            <field name="mentions_names_json" 
+                                   widget="mentions_tags_widget"
+                                   nolabel="1"/>
 
                             <group string="Rendimiento de Técnico Medio">
-                                <field name="secundary_performance_json" 
+                                <field name="tecnico_performance_json" 
                                        widget="general_performance_graph"
                                        colspan="2" 
                                        nolabel="1"/>
                             </group>
                             
-                            <!-- Dashboard con Top 3 estudiantes por sección -->
-                            <group string="Top 3 Estudiantes por Sección">
+                            <!-- Top 3 estudiantes por Mención -->
+                            <group string="Top 3 Estudiantes por Mención">
                                 <field name="secundary_tecnico_dashboard_json" 
-                                       widget="level_dashboard" 
+                                       widget="level_dashboard_students" 
                                        colspan="2"
                                        nolabel="1"/>
                             </group>
@@ -341,35 +284,16 @@
                                 <field name="evalution_type_primary" options="{'no_create':True}"/>
                             </group>
 
-                            <group name="primary" col="3">
-                                <group name="sections" string="Secciones">
-                                    <field name="students_primary_count" nolabel="1" readonly="1"/>
-                                    <label for="students_primary_count" string="Total Estudiantes"/>
-                                </group>
-                                <group name="students" string="Estudiantes">
-                                    <field name="approved_primary_count" nolabel="1" readonly="1"/>
-                                    <label for="approved_primary_count" string="Aprobados"/>
-                                </group>
-                                <group name="professors" string="Docentes">
-                                    <field name="sections_primary_count" nolabel="1" readonly="1"/>
-                                    <label for="sections_primary_count" string="Secciones Activas"/>
-                                </group>
-                            </group>
+                            <!-- KPI Cards + Progress Bar (replaces old counters) -->
+                            <separator string="Estadísticas de estudiantes"/>
+                            <field name="primary_dashboard_json" 
+                                   widget="level_dashboard_kpi" 
+                                   nolabel="1"/>
 
-                            <separator string="Secciones de Primaria"/>
-                            <field name="section_ids" 
-                                    readonly="1" 
-                                   domain="[('type', '=', 'primary')]"
-                                   >
-                                   <!-- context="{'default_year_id': active_id, 'default_type': 'primary'}" -->
-                                <list decoration-success="type == 'primary'">
-                                    <field name="section_id"/>
-                                    <field name="type" invisible="1"/>
-                                    <field name="student_ids" widget="badge" decoration-info="1"/>
-                                    <field name="subject_ids" widget="badge" decoration-success="1"/>
-                                    <field name="professor_ids" widget="many2many_tags"/>
-                                </list>
-                            </field>
+                            <separator string="Grados de Primaria"/>
+                            <field name="sections_primary_ids_m2m" 
+                                   widget="many2many_tags"
+                                   readonly="1"/>
 
                             <group string="Rendimiento de Primaria">
                                 <field name="primary_performance_json" 
@@ -378,10 +302,10 @@
                                        nolabel="1"/>
                             </group>
                             
-                            <!-- Dashboard con Top 3 estudiantes por sección -->
+                            <!-- Top 3 estudiantes por sección -->
                             <group string="Top 3 Estudiantes por Sección">
                                 <field name="primary_dashboard_json" 
-                                       widget="level_dashboard" 
+                                       widget="level_dashboard_students" 
                                        colspan="2"
                                        nolabel="1"/>
                             </group>
@@ -394,94 +318,69 @@
                                 <field name="evalution_type_pree" options="{'no_create':True}"/>
                             </group>
 
-                            <group name="pre" col="3">
-                                <group name="sections" string="Secciones">
-                                    <field name="students_pre_count" nolabel="1" readonly="1"/>
-                                    <label for="students_pre_count" string="Total Estudiantes"/>
-                                </group>
-                                <group name="students" string="Estudiantes">
-                                    <field name="approved_pre_count" nolabel="1" readonly="1"/>
-                                    <label for="approved_pre_count" string="Aprobados"/>
-                                </group>
-                                <group name="professors" string="Docentes">
-                                    <field name="sections_pre_count" nolabel="1" readonly="1"/>
-                                    <label for="sections_pre_count" string="Secciones Activas"/>
-                                </group>
-                            </group>
+                            <!-- KPI Dashboard (like other tabs) -->
+                            <separator string="Estadísticas de Preescolar"/>
+                            <field name="pre_dashboard_json" 
+                                   widget="level_dashboard" 
+                                   nolabel="1" colspan="2"/>
 
-                            <separator string="Secciones de Preescolar"/>
-                            <field name="section_ids" 
-                                    readonly="1" 
-                                   domain="[('type', '=', 'pre')]"
-                                   >
-                                   <!-- context="{'default_year_id': active_id, 'default_type': 'pre'}" -->
-                                <list decoration-info="type == 'pre'">
-                                    <field name="section_id"/>
-                                    <field name="type" invisible="1"/>
-                                    <field name="student_ids" widget="badge" decoration-info="1"/>
-                                    <field name="professor_ids" widget="many2many_tags"/>
-                                </list>
-                            </field>
-
-                            <group string="Rendimiento de Preescolar">
-                                <field name="pre_performance_json" 
-                                       widget="general_performance_graph" 
-                                       colspan="2"
-                                       nolabel="1"/>
-                            </group>
+                            <separator string="Grados de Preescolar"/>
+                            <field name="sections_pre_ids_m2m" 
+                                   widget="many2many_tags"
+                                   readonly="1"/>
                             
-                            <!-- Dashboard con Top 3 estudiantes por sección -->
-                            <group string="Top 3 Estudiantes por Sección">
-                                <field name="pre_dashboard_json" 
-                                       widget="level_dashboard" 
-                                       colspan="2"
-                                       nolabel="1"/>
-                            </group>
+                            <!-- Observations Timeline -->
+                            <separator string="Últimas Observaciones"/>
+                            <field name="pre_observations_timeline_json" 
+                                   widget="pre_observations_timeline" 
+                                   nolabel="1" colspan="2"/>
                         </page>
 
                         <!-- TAB 5: Todos los Estudiantes -->
                         <page string="Estudiantes" name="all_students">
-                            <field name="student_ids" 
-                                    readonly="1" 
-                                   >
-                                   <!-- context="{'default_year_id': active_id}" -->
-                                <list decoration-success="state == 'done'" 
-                                      decoration-muted="state == 'cancel'" 
-                                      decoration-warning="state == 'draft'">
-                                    <field name="student_id"/>
-                                    <field name="section_id"/>
-                                    <field name="type"/>
-                                    <field name="state" widget="badge" 
-                                           decoration-success="state == 'done'" 
-                                           decoration-warning="state == 'draft'" 
-                                           decoration-danger="state == 'cancel'"/>
-                                    <field name="inscription_date"/>
-                                </list>
-                            </field>
+                            <!-- Distribución por Género y Estado -->
+                            <separator string="Distribución de Estudiantes"/>
+                            <field name="students_tab_json" 
+                                   widget="students_distribution_stats" 
+                                   nolabel="1" colspan="2"/>
+                            
+                            <!-- Rendimiento y Niveles -->
+                            <separator string="Rendimiento y Niveles"/>
+                            <field name="students_tab_json" 
+                                   widget="students_approval_stats" 
+                                   nolabel="1" colspan="2"/>
+                            
+                            <!-- Top 10 Mejores Promedios -->
+                            <separator string="Top 10 Mejores Promedios"/>
+                            <field name="students_tab_json" 
+                                   widget="students_top_performers" 
+                                   nolabel="1" colspan="2"/>
+                            
+                            <!-- Estudiantes en Riesgo -->
+                            <separator string="Estudiantes en Riesgo Académico"/>
+                            <field name="students_tab_json" 
+                                   widget="students_at_risk" 
+                                   nolabel="1" colspan="2"/>
                         </page>
 
                         <!-- TAB 6: Profesores y Materias -->
                         <page string="Profesores" name="professors">
-                            <group string="Resumen de Profesores">
-                                <field name="professor_summary_json" 
-                                       widget="professor_summary_widget" 
-                                       colspan="2"
-                                       nolabel="1"/>
-                            </group>
-                            
-                            <group string="Estadísticas por Tipo de Estudiante">
-                                <field name="professor_detailed_stats_json" 
-                                       widget="professor_detailed_stats_widget" 
-                                       colspan="2"
-                                       nolabel="1"/>
-                            </group>
+                            <!-- KPI Cards + Progress Bar -->
+                            <separator string="Estadísticas de Profesores"/>
+                            <field name="professor_dashboard_json" 
+                                   widget="professor_dashboard_kpi" 
+                                   nolabel="1"/>
 
-                            <group string="Materias con Mayor Dificultad">
-                                <field name="difficult_subjects_json" 
-                                       widget="difficult_subjects_chart" 
-                                       colspan="2"
-                                       nolabel="1"/>
-                            </group>
+                            <!-- Top 5 + Distribution -->
+                            <separator string="Top Profesores y Distribución"/>
+                            <field name="professor_dashboard_json" 
+                                   widget="professor_dashboard_ranking" 
+                                   nolabel="1"/>
+
+                            <separator string="Materias con Mayor Dificultad"/>
+                            <field name="difficult_subjects_json" 
+                                   widget="difficult_subjects_chart" 
+                                   nolabel="1"/>
                         </page>
 
                         <!-- TAB 7: Evaluaciones -->
@@ -489,13 +388,6 @@
                             <group string="Estadísticas de Evaluaciones">
                                 <field name="evaluations_stats_json" 
                                        widget="evaluations_stats_widget"
-                                       colspan="2"
-                                       nolabel="1"/>
-                            </group>
-                            
-                            <group string="Evaluaciones Recientes">
-                                <field name="recent_evaluations_json" 
-                                       widget="evaluations_timeline" 
                                        colspan="2"
                                        nolabel="1"/>
                             </group>

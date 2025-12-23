@@ -77,6 +77,8 @@ const normalizeDashboardData = (raw: any): DashboardData => {
         startDateReal: raw.start_date_real || undefined,
         endDateReal: raw.end_date_real || undefined,
         isLocked: raw.is_locked || false,
+        currentLapso: raw.current_lapso || undefined,
+        lapsoDisplay: raw.lapso_display || undefined,
     };
 
     const kpis: DashboardKPIs = {
@@ -376,5 +378,110 @@ export const getDashboardKPIs = async (): Promise<DashboardServiceResult<Dashboa
         return { success: true, data: result.data.kpis };
     } catch (error: any) {
         return { success: false, message: odooApi.extractOdooErrorMessage(error) };
+    }
+};
+
+/**
+ * Gets a specific school year dashboard data by ID
+ * Same rich data as getCurrentSchoolYearDashboard but for any year
+ */
+export const getSchoolYearDashboardById = async (
+    yearId: number,
+    includeAllTabs: boolean = true
+): Promise<DashboardServiceResult<DashboardData>> => {
+    try {
+        if (__DEV__) {
+            console.time(`⏱️ getSchoolYearDashboardById(${yearId})`);
+            console.log(`📡 Fetching dashboard data for year ID: ${yearId}...`);
+        }
+
+        const fields = includeAllTabs ? SCHOOL_YEAR_ALL_FIELDS : SCHOOL_YEAR_LIGHT_FIELDS;
+
+        const readResult = await odooApi.read(
+            MODELS.SCHOOL_YEAR,
+            [yearId],
+            fields as unknown as string[]
+        );
+
+        if (__DEV__) {
+            console.log('📦 Read result:', {
+                success: readResult.success,
+                hasData: !!readResult.data,
+                dataLength: readResult.data?.length || 0,
+            });
+        }
+
+        if (!readResult.success) {
+            if (readResult.error?.isSessionExpired) {
+                return { success: false, message: '' };
+            }
+            return {
+                success: false,
+                message: odooApi.extractOdooErrorMessage(readResult.error),
+            };
+        }
+
+        if (!readResult.data || readResult.data.length === 0) {
+            if (__DEV__) console.log('📭 No se encontró el año escolar');
+            return {
+                success: false,
+                message: 'No se encontró el año escolar solicitado',
+            };
+        }
+
+        const rawData = readResult.data[0];
+        const dashboardData = normalizeDashboardData(rawData);
+
+        // Fetch section and student previews in parallel
+        if (includeAllTabs && dashboardData.schoolYear.id) {
+            const [secPreviews, primPreviews, prePreviews, studentPreviews, tecnicoStudents] = await Promise.all([
+                fetchSectionPreviews(dashboardData.schoolYear.id, 'secundary'),
+                fetchSectionPreviews(dashboardData.schoolYear.id, 'primary'),
+                fetchSectionPreviews(dashboardData.schoolYear.id, 'pre'),
+                fetchStudentPreviews(dashboardData.schoolYear.id),
+                fetchTecnicoStudentPreviews(dashboardData.schoolYear.id),
+            ]);
+
+            dashboardData.sectionPreviews = {
+                secundary: secPreviews,
+                primary: primPreviews,
+                pre: prePreviews,
+            };
+            dashboardData.studentPreviews = studentPreviews;
+            dashboardData.tecnicoStudentPreviews = tecnicoStudents;
+
+            if (__DEV__) {
+                console.log('📦 Previews loaded:', {
+                    secundary: secPreviews.length,
+                    primary: primPreviews.length,
+                    pre: prePreviews.length,
+                    students: studentPreviews.length,
+                    tecnico: tecnicoStudents.length,
+                });
+            }
+        }
+
+        if (__DEV__) {
+            console.timeEnd(`⏱️ getSchoolYearDashboardById(${yearId})`);
+            console.log('✅ Dashboard data loaded:', {
+                year: dashboardData.schoolYear.name,
+                state: dashboardData.schoolYear.state,
+                students: dashboardData.kpis.totalStudentsCount,
+                sections: dashboardData.kpis.totalSectionsCount,
+            });
+        }
+
+        return {
+            success: true,
+            data: dashboardData,
+        };
+    } catch (error: any) {
+        if (__DEV__) {
+            console.error(`❌ Error en getSchoolYearDashboardById(${yearId}):`, error);
+        }
+        return {
+            success: false,
+            message: odooApi.extractOdooErrorMessage(error),
+        };
     }
 };
